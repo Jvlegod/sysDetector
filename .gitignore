@@ -1,0 +1,8 @@
+/build
+/examples/c/build
+/examples/c/.xmake
+/.idea
+**/.output
+/src/sysDetector/proc/proc
+/src/sysDetector-cli/target
+/src/sysDetector-server/target

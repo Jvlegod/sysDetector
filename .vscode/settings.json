@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "bpf_core_read.h": "c",
+        "bpf_helpers.h": "c",
+        "bpf_tracing.h": "c",
+        "signal.h": "c",
+        "type_traits": "c"
+    },
+
+    "rust-analyzer.cargo.features": [],
+    "rust-analyzer.linkedProjects": [
+        "src/sysDetector-cli/Cargo.toml",
+        "src/sysDetector-server/Cargo.toml"
+    ],
+}
