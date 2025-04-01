@@ -11,13 +11,13 @@ static void sig_handler(int sig) {
 
 static void proc_event_exec(struct proc_event *e)
 {
-    printf("PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:%u\n", 
+    printf("PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x\n", 
            e->pid, e->ppid, e->comm, e->filename, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)
 {
-    printf("PID:%d PPID:%d COMM:%-16s STACK_ID:%u\n", 
+    printf("PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x\n", 
            e->pid, e->ppid, e->comm, e->stack_id);
 }
 static int handle_event(void *ctx, void *data, size_t sz) {
@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
 
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.proc_events), handle_event, NULL, NULL);
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.proc_events), handle_event, skel, NULL);
     if (!rb) {
         err = -errno;
         fprintf(stderr, "Failed to create ring buffer\n");
