@@ -4,7 +4,11 @@
         "bpf_helpers.h": "c",
         "bpf_tracing.h": "c",
         "signal.h": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "libdwfl.h": "c",
+        "bpf.h": "c",
+        "dlfcn.h": "c",
+        "proc.h": "c"
     },
 
     "rust-analyzer.cargo.features": [],

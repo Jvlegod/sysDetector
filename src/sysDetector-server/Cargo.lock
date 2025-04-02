@@ -348,7 +348,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sysDetector-server"
+name = "sysDetectord"
 version = "0.1.0"
 dependencies = [
  "structopt",
