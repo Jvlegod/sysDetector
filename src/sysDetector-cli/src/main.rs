@@ -1,41 +1,47 @@
-use structopt::StructOpt;
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream};
+use log::{debug, LevelFilter};
+use serde_json;
+use anyhow::Result;
+mod args;
+
+use self::{
+    args::{Arguments},
+};
 
 // const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
 const SOCKET_FILE_NAME: &str = "/home/jvle/Desktop/temp/sysDetector.sock";
 
-#[derive(StructOpt, Debug)]
-enum Command {
-    START,
-    STOP,
-    LIST,
-}
-
-#[repr(u8)]
-enum DeamonCommand {
-    START = 1,
-    STOP = 2,
-    LIST = 3,
-}
-
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cmd = Command::from_args();
+    let args = Arguments::new()?;
 
-    let daemon_cmd:u8 = match cmd {
-        Command::START => DeamonCommand::START as u8,
-        Command::STOP => DeamonCommand::STOP as u8,
-        Command::LIST => DeamonCommand::LIST as u8,
-    };
+    println!("{:?}", args.subcommand);
 
     let socket_path = SOCKET_FILE_NAME;
     let mut stream = UnixStream::connect(socket_path).await?;
-    
-    stream.write_all(&[daemon_cmd]).await?;
 
-    let mut buf = String::new();
-    let resp = stream.read_to_string(&mut buf).await?;
-    
+    let serialized_cmd = serde_json::to_string(&args.subcommand)?;
+    let cmd_bytes = serialized_cmd.as_bytes();
+
+    // sned length
+    let cmd_len = cmd_bytes.len() as u32;
+    stream.write_all(&cmd_len.to_be_bytes()).await?;
+
+    // send content
+    stream.write_all(cmd_bytes).await?;
+
+    // read length
+    let mut len_buf = [0; 4];
+    stream.read_exact(&mut len_buf).await?;
+    let response_len = u32::from_be_bytes(len_buf) as usize;
+
+    // read content
+    let mut buf = vec![0; response_len];
+    stream.read_exact(&mut buf).await?;
+    let response_str = String::from_utf8_lossy(&buf);
+
+    println!("Received response: {}", response_str);
+
     Ok(())
 }
+    
