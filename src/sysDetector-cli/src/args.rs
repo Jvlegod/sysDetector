@@ -13,7 +13,7 @@ pub enum Command {
 
         /// Set proc opt
         #[clap(required = true)]
-        opt: Vec<String>,
+        opt: String,
     },
 
     /// Set fs op
@@ -22,7 +22,7 @@ pub enum Command {
 
         /// Set fs opt
         #[clap(required = true)]
-        opt: Vec<String>,
+        opt: String,
     },
 
     /// Set list op
@@ -31,7 +31,7 @@ pub enum Command {
 
         /// Set list opt
         #[clap(required = true)]
-        opt: Vec<String>,
+        opt: String,
     },
 }
 

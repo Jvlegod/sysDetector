@@ -9,9 +9,11 @@ description = "sysDetectord service"
 [dependencies]
 tokio  = { version = "1.0", features = ["full"] }
 log    = { version = "0.4" }
+env_logger = {version = "0.10"}
 clap   = { version = "3.2", features = ["cargo", "derive"] }
 anyhow = { version = "1.0" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
-posix-mqueue = { version = "2.0.0" }
+nix = { version = "0.26", features = ["mqueue"] }
+lazy_static = { version = "1.4.0" }
 structopt = "0.3"

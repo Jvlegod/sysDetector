@@ -1,104 +1,161 @@
 use log::debug;
 use serde_json;
 use anyhow::{Context, Result};
-use crate::args::Command;
-use mqueue::{Mqueue, QueueOptions, QueueAttr};
+use nix::mqueue::{mq_open, mq_send, mq_receive, mq_close, mq_unlink, MqAttr, MQ_OFlag, MqdT};
+use nix::sys::stat::Mode;
+use std::ffi::CStr;
 use std::time::Duration;
+use crate::args::Command;
+use lazy_static::lazy_static;
 
-const EBPF_PATH: &str = "/home/jvle/Desktop/temp";
-const COMMAND_QUEUE: &str = "/ebpf_command_queue";
-const RESPONSE_QUEUE: &str = "/ebpf_response_queue";
+lazy_static! {
+    static ref COMMAND_QUEUE: &'static CStr = {
+        CStr::from_bytes_with_nul(b"/ebpf_command_queue\0").unwrap()
+    };
+    static ref RESPONSE_QUEUE: &'static CStr = {
+        CStr::from_bytes_with_nul(b"/ebpf_response_queue\0").unwrap()
+    };
+}
+
 const MAX_MSG_SIZE: usize = 1024;
+// TODO: set the attr for mqueue, for example: MqAttr.
 const QUEUE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[repr(i32)]
-pub enum RPC_RET_CODE {
-    EBPF_FAILED,
-    EBPF_SUCCESS,
+#[derive(Debug)]
+pub enum RpcRetCode {
+    Success = 0,
+    Failed = -1,
 }
 
-impl RPC_RET_CODE {
+impl RpcRetCode {
     pub fn get_code(&self) -> i32 {
         match self {
-            Self::EBPF_FAILED => -1,
-            Self::EBPF_SUCCESS => 0,
+            Self::Success => -1,
+            Self::Failed => 0,
         }
     }
 }
 
 pub struct Rpc {
-    pub path: String,
+    cmd_fd: Option<MqdT>,
+    resp_fd: Option<MqdT>,
+    // TODO: now we dont't need it.
+    is_owner: bool,
 }
 
 impl Rpc {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            path: EBPF_PATH.to_string()
+            cmd_fd: Some(mq_open(
+                *COMMAND_QUEUE,
+                MQ_OFlag::O_CREAT | MQ_OFlag::O_WRONLY,
+                Mode::S_IRUSR | Mode::S_IWUSR,
+                None,
+            ).context("Failed to create command queue")?),
+            
+            resp_fd: Some(mq_open(
+                *RESPONSE_QUEUE,
+                MQ_OFlag::O_CREAT | MQ_OFlag::O_RDONLY,
+                Mode::S_IRUSR | Mode::S_IWUSR,
+                None,
+            ).context("Failed to create response queue")?),
+            
+            is_owner: true,
         })
     }
 
     pub fn handle_command(&self, command: &[u8]) -> Result<i32> {
         let recv_command: Command = serde_json::from_slice(command)
-            .context("Failed to deserialize command")?;
-        debug!("Received command: {:?}", recv_command);
-
-        let cmd_mq = Mqueue::open(
-            COMMAND_QUEUE,
-            QueueOptions::new()
-                .write_only()
-                .create()
-                .nonblock(),
-            QueueAttr {
-                maxmsg: 10,
-                msgsize: MAX_MSG_SIZE as u64,
-                ..Default::default()
-            },
-        ).context("Failed to open command queue")?;
+        .context("Failed to deserialize command")?;
+        println!("Received command: {:?}", recv_command);
 
         let command_str = self.validate_command(&recv_command)?;
+        self.send_command(&command_str)?;
+        println!("Send command: {}", command_str);
+        
+        let recv_str = self.receive_response()?;
+        println!("Received response: {}", recv_str);
+        /* TODO:
+         * Here now always success, but need to return related value
+         */
+        Ok(RpcRetCode::Success.get_code())
+    }
 
-        cmd_mq.send(command_str.as_bytes(), 0)
-            .context("Failed to send command")?;
-        debug!("Sent command: {}", command_str);
+    fn send_command(&self, command: &str) -> Result<()> {
+        let bytes = command.as_bytes();
+        if bytes.len() > MAX_MSG_SIZE {
+            return Err(anyhow::anyhow!("Message too large"));
+        }
+        
+        self.cmd_fd.as_ref().ok_or(anyhow::anyhow!("Command queue closed"))?;
+        
+        mq_send(self.cmd_fd.as_ref().unwrap(), bytes, 0)
+            .context("Command send failed")
+    }
 
-        let resp_mq = Mqueue::open(
-            RESPONSE_QUEUE,
-            QueueOptions::new()
-                .read_only()
-                .create(),
-            QueueAttr {
-                maxmsg: 10,
-                msgsize: MAX_MSG_SIZE as u64,
-                ..Default::default()
-            },
-        ).context("Failed to open response queue")?;
+    fn receive_response(&self) -> Result<String> {
+        let mut buf = vec![0u8; MAX_MSG_SIZE];
+        let mut prio = 0u32;
+        
+        self.resp_fd.as_ref().ok_or(anyhow::anyhow!("Response queue closed"))?;
+        
+        let len = match mq_receive(self.resp_fd.as_ref().unwrap(),
+        &mut buf, &mut prio) {
+            Ok(len) => len,
+            Err(err) => {
+                eprintln!("Error receiving response: {}", err);
+                return Err(err).context("Response receive failed");
+            }
+        };
 
-        let mut buffer = [0u8; MAX_MSG_SIZE];
-        let (msg, _) = resp_mq.receive_timeout(&mut buffer, QUEUE_TIMEOUT)
-            .context("Timeout waiting for response")?;
-
-        let response = String::from_utf8_lossy(&msg);
-        response.trim().parse::<i32>()
-            .context("Failed to parse response code")
+        String::from_utf8(buf[..len].to_vec())
+            .context("Invalid UTF-8 response")
     }
 
     fn validate_command(&self, cmd: &Command) -> Result<String> {
         match cmd {
             Command::PROC { identifier, opt } => {
-                if opt.iter().any(|s| s == "start") {
-                    Ok(format!("PROC_START:{}", identifier))
-                } else if opt.iter().any(|s| s == "stop") {
-                    Ok(format!("PROC_STOP:{}", identifier))
+                if opt == "start" {
+                    Ok(opt.to_string())
+                } else if opt == "stop" {
+                    Ok(opt.to_string())
                 } else {
                     Err(anyhow::anyhow!("Invalid PROC operation"))
                 }
             }
             Command::FS { identifier, opt } => {
-                Ok(format!("FS_OP:{}:{}", identifier, opt.join(",")))
+                todo!()
             }
             Command::LIST { identifier, opt } => {
-                Ok(format!("LIST:{}:{}", identifier, opt.join(",")))
+                todo!()
             }
+        }
+    }
+}
+
+impl Drop for Rpc {
+    fn drop(&mut self) {
+        let close = |fd: &mut Option<MqdT>| {
+            if let Some(fd) = fd.take() {
+                if let Err(e) = mq_close(fd) {
+                    eprintln!("Error closing queue: {}", e);
+                }
+            }
+        };
+
+        close(&mut self.cmd_fd);
+        close(&mut self.resp_fd);
+
+        if self.is_owner {
+            let unlink = |name: &CStr| {
+                if let Err(e) = mq_unlink(name) {
+                    eprintln!("Error unlinking queue: {}", e);
+                }
+            };
+
+            unlink(*COMMAND_QUEUE);
+            unlink(*RESPONSE_QUEUE);
         }
     }
 }

@@ -13,7 +13,11 @@
 #define MAX_MSG_SIZE   1024
 #define QUEUE_TIMEOUT  100  // milliseconds
 
-bool exiting = false;
+#define PROC_START "start"
+#define PROC_STOP "stop"
+
+bool ebpf_exiting = false;
+bool ebpf_running = false;
 static mqd_t resp_mq;
 
 typedef enum {
@@ -23,7 +27,7 @@ typedef enum {
 } ResponseCode;
 
 static void sig_handler(int sig) {
-    exiting = true;
+    ebpf_exiting = true;
     mq_close(resp_mq);
     mq_unlink(RESPONSE_QUEUE);
 }
@@ -31,27 +35,29 @@ static void sig_handler(int sig) {
 static void proc_event_exec(struct proc_event *e)
 {
     printf("PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x\n", 
-           e->pid, e->ppid, e->comm, e->filename, e->stack_id);
+            e->pid, e->ppid, e->comm, e->filename, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)
 {
     printf("PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x\n", 
-           e->pid, e->ppid, e->comm, e->stack_id);
+            e->pid, e->ppid, e->comm, e->stack_id);
 }
 
 static int handle_event(void *ctx, void *data, size_t sz) {
-    struct proc_event *e = data;
-    switch (e->type)
-    {
-    case EVENT_EXEC:
-        proc_event_exec(e);
-        goto handle_ret;
-    case EVENT_EXIT:
-        proc_event_exit(e);
-        goto handle_ret;
-    default:
-        return -1;
+    if (ebpf_running) {
+        struct proc_event *e = data;
+        switch (e->type)
+        {
+        case EVENT_EXEC:
+            proc_event_exec(e);
+            goto handle_ret;
+        case EVENT_EXIT:
+            proc_event_exit(e);
+            goto handle_ret;
+        default:
+            return -1;
+        }
     }
     
 handle_ret:
@@ -68,31 +74,34 @@ static void send_response(ResponseCode code) {
 }
 
 static void handle_command(const char *command) {
-    char *saveptr = NULL;
-    char *cmd_type = strtok_r((char*)command, ":", &saveptr);
-    char *arg = strtok_r(NULL, ":", &saveptr);
-
-    if (!cmd_type || !arg) {
+    if (!command) {
         fprintf(stderr, "Invalid command format\n");
         send_response(CMD_INVALID);
         return;
     }
 
-    if (strncmp(cmd_type, "PROC_START", 10) == 0) {
-        int pid = atoi(arg);
-        printf("Starting monitoring PID: %d\n", pid);
-        send_response(CMD_SUCCESS);
+    if (strncmp(command, PROC_START, 5) == 0) {
+        if (!ebpf_running) {
+            printf("Starting monitoring Proc\n");
+            ebpf_running = true;
+            send_response(CMD_SUCCESS);
+        } else {
+            fprintf(stderr, "eBPF service is already running\n");
+            send_response(CMD_EBPF_ERR);
+        }
         
-    } else if (strncmp(cmd_type, "PROC_STOP", 9) == 0) {
-        int pid = atoi(arg);
-        printf("Stopping monitoring PID: %d\n", pid);
-        send_response(CMD_SUCCESS);
-        
-    } else if (strncmp(cmd_type, "FS_OP", 5) == 0) {
-        send_response(CMD_SUCCESS);
+    } else if (strncmp(command, PROC_STOP, 4) == 0) {
+        if (ebpf_running) {
+            printf("Stopping monitoring Proc\n");
+            ebpf_running = false;
+            send_response(CMD_SUCCESS);
+        } else {
+            fprintf(stderr, "eBPF service is not running\n");
+            send_response(CMD_EBPF_ERR);
+        }
         
     } else {
-        fprintf(stderr, "Unknown command: %s\n", cmd_type);
+        fprintf(stderr, "Unknown command: %s\n", command);
         send_response(CMD_INVALID);
     }
 }
@@ -138,7 +147,7 @@ int main(int argc, char **argv) {
 
     printf("eBPF monitoring started\n");
 
-    while (!exiting) {
+    while (!ebpf_exiting) {
         char buffer[MAX_MSG_SIZE] = {0};
         ssize_t bytes_read = mq_receive(cmd_mq, buffer, MAX_MSG_SIZE, NULL);
 
