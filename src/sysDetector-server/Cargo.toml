@@ -3,6 +3,9 @@ name = "sysDetectord"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["Jvle"]
+description = "sysDetectord service"
+
 [dependencies]
 tokio  = { version = "1.0", features = ["full"] }
 log    = { version = "0.4" }
@@ -10,4 +13,5 @@ clap   = { version = "3.2", features = ["cargo", "derive"] }
 anyhow = { version = "1.0" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
+posix-mqueue = { version = "2.0.0" }
 structopt = "0.3"

@@ -1,12 +1,31 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <signal.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <mqueue.h>
 #include "proc.h"
 #include "proc.skel.h"
+
+#define COMMAND_QUEUE  "/ebpf_command_queue"
+#define RESPONSE_QUEUE "/ebpf_response_queue"
+#define MAX_MSG_SIZE   1024
+#define QUEUE_TIMEOUT  100  // milliseconds
+
+bool exiting = false;
+static mqd_t resp_mq;
+
+typedef enum {
+    CMD_SUCCESS = 0,
+    CMD_INVALID = -1,
+    CMD_EBPF_ERR = -2
+} ResponseCode;
+
 static void sig_handler(int sig) {
     exiting = true;
+    mq_close(resp_mq);
+    mq_unlink(RESPONSE_QUEUE);
 }
 
 static void proc_event_exec(struct proc_event *e)
@@ -20,6 +39,7 @@ static void proc_event_exit(struct proc_event *e)
     printf("PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x\n", 
            e->pid, e->ppid, e->comm, e->stack_id);
 }
+
 static int handle_event(void *ctx, void *data, size_t sz) {
     struct proc_event *e = data;
     switch (e->type)
@@ -38,47 +58,106 @@ handle_ret:
     return 0;
 }
 
+static void send_response(ResponseCode code) {
+    char response[16];
+    snprintf(response, sizeof(response), "%d", code);
+    
+    if (mq_send(resp_mq, response, strlen(response), 0) == -1) {
+        perror("mq_send response");
+    }
+}
+
+static void handle_command(const char *command) {
+    char *saveptr = NULL;
+    char *cmd_type = strtok_r((char*)command, ":", &saveptr);
+    char *arg = strtok_r(NULL, ":", &saveptr);
+
+    if (!cmd_type || !arg) {
+        fprintf(stderr, "Invalid command format\n");
+        send_response(CMD_INVALID);
+        return;
+    }
+
+    if (strncmp(cmd_type, "PROC_START", 10) == 0) {
+        int pid = atoi(arg);
+        printf("Starting monitoring PID: %d\n", pid);
+        send_response(CMD_SUCCESS);
+        
+    } else if (strncmp(cmd_type, "PROC_STOP", 9) == 0) {
+        int pid = atoi(arg);
+        printf("Stopping monitoring PID: %d\n", pid);
+        send_response(CMD_SUCCESS);
+        
+    } else if (strncmp(cmd_type, "FS_OP", 5) == 0) {
+        send_response(CMD_SUCCESS);
+        
+    } else {
+        fprintf(stderr, "Unknown command: %s\n", cmd_type);
+        send_response(CMD_INVALID);
+    }
+}
+
 int main(int argc, char **argv) {
     struct proc_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
-    int err;
+    mqd_t cmd_mq;
+    struct mq_attr attr = {
+        .mq_flags = 0,
+        .mq_maxmsg = 10,
+        .mq_msgsize = MAX_MSG_SIZE,
+        .mq_curmsgs = 0
+    };
 
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
+    resp_mq = mq_open(RESPONSE_QUEUE, O_WRONLY | O_CREAT, 0666, &attr);
+    if (resp_mq == (mqd_t)-1) {
+        perror("mq_open response");
+        return EXIT_FAILURE;
+    }
+
+    cmd_mq = mq_open(COMMAND_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, 0666, &attr);
+    if (cmd_mq == (mqd_t)-1) {
+        perror("mq_open command");
+        mq_close(resp_mq);
+        return EXIT_FAILURE;
+    }
+
     skel = proc_bpf__open();
-    if (!skel) {
-        fprintf(stderr, "Failed to open BPF skeleton\n");
-        return 1;
-    }
-
-    err = proc_bpf__load(skel);
-    if (err) {
-        fprintf(stderr, "Failed to load BPF skeleton\n");
+    if (!skel || proc_bpf__load(skel) || proc_bpf__attach(skel)) {
+        fprintf(stderr, "eBPF setup failed\n");
         goto cleanup;
     }
 
-    err = proc_bpf__attach(skel);
-    if (err) {
-        fprintf(stderr, "Failed to attach BPF skeleton\n");
-        goto cleanup;
-    }
-
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.proc_events), handle_event, skel, NULL);
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.proc_events), handle_event, NULL, NULL);
     if (!rb) {
-        err = -errno;
         fprintf(stderr, "Failed to create ring buffer\n");
         goto cleanup;
     }
 
-    printf("Monitoring process events...\n");
+    printf("eBPF monitoring started\n");
+
     while (!exiting) {
-        /* timeout(ms) */
-        ring_buffer__poll(rb, 100);
+        char buffer[MAX_MSG_SIZE] = {0};
+        ssize_t bytes_read = mq_receive(cmd_mq, buffer, MAX_MSG_SIZE, NULL);
+
+        if (bytes_read > 0) {
+            buffer[bytes_read] = '\0';
+            handle_command(buffer);
+        } else if (errno != EAGAIN) {
+            perror("mq_receive");
+        }
+
+        ring_buffer__poll(rb, QUEUE_TIMEOUT);
     }
 
 cleanup:
     ring_buffer__free(rb);
     proc_bpf__destroy(skel);
-    return -err;
+    mq_close(cmd_mq);
+    mq_unlink(COMMAND_QUEUE);
+    mq_close(resp_mq);
+    mq_unlink(RESPONSE_QUEUE);
+    return EXIT_SUCCESS;
 }

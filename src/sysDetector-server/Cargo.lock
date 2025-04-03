@@ -249,6 +249,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mqueue"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ae150b4fa096039c44382265f4daaf95f751e99a1765c09f998a00803dd1d09"
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -489,6 +495,7 @@ dependencies = [
  "anyhow",
  "clap 3.2.25",
  "log",
+ "mqueue",
  "serde",
  "serde_json",
  "structopt",

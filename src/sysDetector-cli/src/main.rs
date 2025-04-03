@@ -23,24 +23,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let serialized_cmd = serde_json::to_string(&args.subcommand)?;
     let cmd_bytes = serialized_cmd.as_bytes();
 
-    // sned length
     let cmd_len = cmd_bytes.len() as u32;
     stream.write_all(&cmd_len.to_be_bytes()).await?;
-
-    // send content
     stream.write_all(cmd_bytes).await?;
 
-    // read length
-    let mut len_buf = [0; 4];
-    stream.read_exact(&mut len_buf).await?;
-    let response_len = u32::from_be_bytes(len_buf) as usize;
-
-    // read content
-    let mut buf = vec![0; response_len];
+    let mut buf = [0; 4];
     stream.read_exact(&mut buf).await?;
-    let response_str = String::from_utf8_lossy(&buf);
+    let response_code =  i32::from_be_bytes(buf);
 
-    println!("Received response: {}", response_str);
+    println!("Received response: {}", response_code);
 
     Ok(())
 }

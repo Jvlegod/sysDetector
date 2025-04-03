@@ -6,7 +6,7 @@ use tokio::{
     net::UnixListener,
 };
 
-mod ebpf;
+mod rpc;
 mod args;
 
 
@@ -16,7 +16,7 @@ use anyhow::Result;
 const SOCKET_FILE_NAME: &str = "/home/jvle/Desktop/temp/sysDetector.sock";
 
 async fn handle_connection(mut stream: tokio::net::UnixStream) -> Result<()> {
-    let ebpf = ebpf::Ebpf::new()?;
+    let ebpf = rpc::Ebpf::new()?;
     let mut len_buf = [0; 4];
     stream.read_exact(&mut len_buf).await?;
     let message_len = u32::from_be_bytes(len_buf) as usize;
@@ -26,9 +26,7 @@ async fn handle_connection(mut stream: tokio::net::UnixStream) -> Result<()> {
 
     let response = ebpf.handle_command(&buf)?;
 
-    let response_len = response.len() as u32;
-    stream.write_all(&response_len.to_be_bytes()).await?;
-    stream.write_all(response.as_bytes()).await?;
+    stream.write_all(&response.to_be_bytes()).await?;
 
     Ok(())
 }

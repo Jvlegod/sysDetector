@@ -1,7 +1,6 @@
 use log::{debug, LevelFilter};
-use clap::{Parser, Subcommand};
+use clap::Subcommand;
 use serde::{Serialize, Deserialize};
-
 
 #[derive(Debug, Clone, Subcommand, Serialize, Deserialize)]
 pub enum Command {
