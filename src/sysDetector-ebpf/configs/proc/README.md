@@ -1,2 +1,5 @@
-对于进程我们可以监控以下几点.
+## proc monitor
 
+|function|state|note|
+|---|---|---|
+|关键进程异常退出自恢复|N||

@@ -9,28 +9,17 @@
 #include "proc.h"
 #include "proc.skel.h"
 
-#define COMMAND_QUEUE  "/ebpf_command_queue"
-#define RESPONSE_QUEUE "/ebpf_response_queue"
-#define MAX_MSG_SIZE   1024
-#define QUEUE_TIMEOUT  100  // milliseconds
-#define LOG_DIR_PATH "/var/log/sysDetector"
-#define LOG_FILE_NAME LOG_DIR_PATH"/sysDetector_proc.log"
-
-#define PROC_START "start"
-#define PROC_STOP "stop"
-
-bool ebpf_exiting = false;
-bool ebpf_running = false;
-static mqd_t resp_mq;
-static mqd_t cmd_mq;
-FILE *log_file;
-
-typedef enum {
-    CMD_SUCCESS = 0,
-    CMD_INVALID = -1,
-    CMD_EBPF_ERR = -2
-} ResponseCode;
-
+static struct item_value_func g_ps_opt_array[] = {
+    { "MONITOR_PERIOD", parse_monitor_period },
+    { "MONITOR_MODE", parse_monitor_mode },
+    { "CHECK_AS_PARAM", parse_monitor_check_as_param },
+    { "USER", parse_user },
+    { "NAME", parse_name },
+    { "RECOVER_COMMAND", parse_recover_command },
+    { "MONITOR_COMMAND", parse_monitor_command },
+    { "STOP_COMMAND", parse_stop_command },
+    { "ALARM_COMMAND", parse_alarm_command },
+};
 static void sig_handler(int sig) {
     ebpf_exiting = true;
 }
@@ -118,23 +107,11 @@ static void handle_command(const char *command) {
     }
 }
 
-int main(int argc, char **argv) {
-    struct proc_bpf *skel = NULL;
-    struct ring_buffer *rb = NULL;
-    struct mq_attr attr = {
-        .mq_flags = 0,
-        .mq_maxmsg = 10,
-        .mq_msgsize = MAX_MSG_SIZE,
-        .mq_curmsgs = 0
-    };
-
-    signal(SIGINT, sig_handler);
-    signal(SIGTERM, sig_handler);
-
+static int proc_init_log() {
     if (mkdir(LOG_DIR_PATH, 0755) == -1) {
         if (errno != EEXIST) {
             perror("Failed to create log directory");
-            return -1;
+            return EXIT_FAILURE;
         }
     }
 
@@ -143,6 +120,16 @@ int main(int argc, char **argv) {
         perror("Failed to open or create log file");
         return EXIT_FAILURE;
     }
+    return 0;
+}
+
+static int proc_init_mq() {
+    struct mq_attr attr = {
+        .mq_flags = 0,
+        .mq_maxmsg = 10,
+        .mq_msgsize = MAX_MSG_SIZE,
+        .mq_curmsgs = 0
+    };
 
     resp_mq = mq_open(RESPONSE_QUEUE, O_WRONLY | O_CREAT, 0666, &attr);
     if (resp_mq == (mqd_t)-1) {
@@ -158,6 +145,32 @@ int main(int argc, char **argv) {
         fflush(log_file);
         mq_close(resp_mq);
         fclose(log_file);
+        return EXIT_FAILURE;
+    }
+
+    return 0;
+}
+
+static int proc_parse_config() {
+
+}
+
+int main(int argc, char **argv) {
+    struct proc_bpf *skel = NULL;
+    struct ring_buffer *rb = NULL;
+
+    signal(SIGINT, sig_handler);
+    signal(SIGTERM, sig_handler);
+
+    if (!proc_init_log()) {
+        return EXIT_FAILURE;
+    }
+
+    if (!proc_init_mq()) {
+        return EXIT_FAILURE;
+    }
+
+    if (!proc_parse_config()) {
         return EXIT_FAILURE;
     }
 
