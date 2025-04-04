@@ -6,3 +6,4 @@
 /src/sysDetector/proc/proc
 /src/sysDetector-cli/target
 /src/sysDetector-server/target
+/src/tmp

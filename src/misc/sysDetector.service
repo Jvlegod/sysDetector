@@ -5,7 +5,7 @@ After=network.target
 
 [Service]
 Type=forking
-ExecStart=/usr/bin/sysDetector/sysDetectord -d
+ExecStart=/usr/local/libexec/sysDetector/sysDetector-server -d
 ExecStop=/usr/bin/kill -s SIGTERM $MAINPID
 User=root
 Group=root

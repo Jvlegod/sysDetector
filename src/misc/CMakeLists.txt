@@ -1,0 +1,11 @@
+# Install service
+install(
+    FILES
+        ${CMAKE_CURRENT_LIST_DIR}/sysDetector.service
+    PERMISSIONS
+        OWNER_EXECUTE OWNER_WRITE OWNER_READ
+        GROUP_EXECUTE GROUP_READ
+        WORLD_READ WORLD_EXECUTE
+    DESTINATION
+        ${SYSDETECTOR_SERVICE_DIR}
+)
