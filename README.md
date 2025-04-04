@@ -49,7 +49,10 @@ sudo python3 uninstall.py
 
 ```bash
 # TODO
+sysDetector-cli --help
 ```
+
+we can find out log in "/var/log/sysDetector/sysDetector_<model_name>.log"
 
 ## TODO
 

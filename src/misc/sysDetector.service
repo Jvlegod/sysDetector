@@ -1,10 +1,9 @@
 [Unit]
 Description=sysDetector Management service
 Requires=local-fs.target
-After=network.target
 
 [Service]
-Type=forking
+Type=simple
 ExecStart=/usr/local/libexec/sysDetector/sysDetector-server -d
 ExecStop=/usr/bin/kill -s SIGTERM $MAINPID
 User=root
