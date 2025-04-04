@@ -22,15 +22,26 @@ sudo make && sudo make install
 
 ## How to start
 
+"sysDetector.service" is the basic service.
+
 ```bash
-systemctl start sysDetector.service
+sudo systemctl start sysDetector.service
 systemctl status sysDetector # check if it is OK.
+```
+
+we can start with model.
+
+```bash
+# model exists in misc dir
+sudo systemctl start <model_name>.service
 ```
 
 ## How to uninstall
 
-```python
+```bash
 # It should be executed in the "src/" directory
+systemctl disable sysDetector.service
+systemctl stop sysDetector.service
 sudo python3 uninstall.py
 ```
 

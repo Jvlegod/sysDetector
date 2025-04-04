@@ -3,6 +3,9 @@ name = "sysDetector-cli"
 version = "0.1.0"
 edition = "2021"
 
+authors = ["Jvle"]
+description = "sysDetectord client"
+
 [dependencies]
 tokio  = { version = "1.0", features = ["full"] }
 log    = { version = "0.4" }

@@ -6,20 +6,29 @@ System Detector Uninstall Script
 import os
 import sys
 import shutil
+import subprocess
 from pathlib import Path
 
 # Installation paths to remove
 INSTALL_PATHS = [
     Path("/usr/local/bin/sysDetector-cli"),
-    Path("/usr/local/libexec/sysDetector/sysDetector-server"),
+    Path("/usr/local/libexec/sysDetector"),
     Path("/usr/local/lib/systemd/system/sysDetector.service"),
+    Path("/usr/local/lib/systemd/system/sysDetector-proc.service")
 ]
 
 # Potential empty directories to clean up
 POTENTIAL_EMPTY_DIRS = [
     Path("/usr/local/libexec/sysDetector"),
-    Path("/usr/local/lib/systemd/system") # Delete with caution
+    Path("/usr/local/lib/systemd/system")  # Delete with caution
 ]
+
+# service list
+SERVICES_TO_STOP = [
+    "sysDetector.service",
+    "sysDetector-proc.service"
+]
+
 
 def check_root():
     """Verify script is run with root privileges"""
@@ -27,10 +36,21 @@ def check_root():
         print("Error: This script requires root privileges. Use sudo.")
         sys.exit(1)
 
+
+def stop_services():
+    """Stop all relevant services using systemctl"""
+    for service in SERVICES_TO_STOP:
+        try:
+            subprocess.run(["systemctl", "stop", service], check=True)
+            print(f"Successfully stopped {service}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error stopping {service}: {e}")
+
+
 def remove_installation_items():
     """Remove installed files and directories"""
     removed_items = 0
-    
+
     for path in INSTALL_PATHS:
         if path.exists():
             try:
@@ -49,10 +69,11 @@ def remove_installation_items():
 
     return removed_items
 
+
 def clean_empty_directories():
     """Remove empty parent directories"""
     cleaned_dirs = 0
-    
+
     for dir_path in POTENTIAL_EMPTY_DIRS:
         try:
             if dir_path.exists() and dir_path.is_dir():
@@ -65,23 +86,29 @@ def clean_empty_directories():
 
     return cleaned_dirs
 
+
 def main():
     check_root()
-    
-    print("Uninstalling System Detector...\n")
-    
+
+    print("Stopping System Detector services...")
+    stop_services()
+
+    print("\nUninstalling System Detector...\n")
+
     removed_count = remove_installation_items()
     cleaned_count = clean_empty_directories()
-    
+
     print("\nUninstallation summary:")
-    print(f"• Removed {removed_count} files/directories")
+    print(f"• Removed {removed_count} files directories")
     print(f"• Cleaned {cleaned_count} empty directories")
-    
+
     if removed_count < len(INSTALL_PATHS):
         print("\nWarning: Not all components were successfully removed")
         sys.exit(1)
-        
+
     print("\nUninstallation completed successfully")
+
 
 if __name__ == "__main__":
     main()
+    

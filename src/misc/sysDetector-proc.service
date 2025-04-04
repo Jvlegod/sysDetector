@@ -1,0 +1,16 @@
+[Unit]
+Description=sysDetector Management service
+Requires=local-fs.target
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/libexec/sysDetector/proc -d
+ExecStop=/usr/bin/kill -s SIGTERM $MAINPID
+User=root
+Group=root
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

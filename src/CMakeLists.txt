@@ -23,16 +23,14 @@ foreach(FLAG IN LISTS PROJECT_RUST_FLAGS)
      set(RUST_FLAGS "${RUST_FLAGS} ${FLAG}")
 endforeach()
 
-add_custom_target(
-    build_sysDetector_server ALL
+add_custom_target(build_sysDetector_server ALL
     COMMENT "Building sysDetector-server executables..."
     COMMAND cargo build
         --release --target-dir "${RUST_TARGET_DIR}"
         --manifest-path ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-server/Cargo.toml
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-server
 )
-add_custom_target(
-    build_sysDetector_cli ALL
+add_custom_target(build_sysDetector_cli ALL
     COMMENT "Building sysDetector-cli executables..."
     COMMAND cargo build
         --release --target-dir "${RUST_TARGET_DIR}"
@@ -53,7 +51,7 @@ message("
 ▗▄▄▞▘  ▐▌ ▗▄▄▞▘▐▙▄▄▀▐▙▄▄▖  █  ▐▙▄▄▖▝▚▄▄▖  █ ▝▚▄▞▘▐▌ ▐▌                                                    
 ")
 message("----------------------------------------------------")
-message("-- Rust flags: ${PROJECT_RUST_FLAGS}")
+# message("-- Rust flags: ${PROJECT_RUST_FLAGS}")
 message("-- Binary  directory: ${SYSDETECTOR_BINARY_DIR}")
 message("-- Libexec directory: ${SYSDETECTOR_LIBEXEC_DIR}")
 message("-- Service directory: ${SYSDETECTOR_SERVICE_DIR}")
@@ -79,6 +77,20 @@ install (
         WORLD_READ WORLD_EXECUTE
     DESTINATION
     ${SYSDETECTOR_LIBEXEC_DIR}
+)
+
+# TODO: change eBPF program from makefile to cmake
+# compile and install eBPF program
+add_custom_target(build_sysDetector_ebpf ALL
+    COMMENT "Building sysDetector-ebpf using Makefile..."
+    COMMAND $(MAKE) -C ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf
+    DEPENDS build_sysDetector_server build_sysDetector_cli
+)
+
+add_custom_command(TARGET build_sysDetector_ebpf POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SYSDETECTOR_LIBEXEC_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/proc ${SYSDETECTOR_LIBEXEC_DIR}
+    COMMENT "Copying sysDetector-ebpf executables to ${SYSDETECTOR_LIBEXEC_DIR}"
 )
 
 # add sub dir
