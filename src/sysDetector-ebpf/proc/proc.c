@@ -19,6 +19,7 @@
 bool ebpf_exiting = false;
 bool ebpf_running = false;
 static mqd_t resp_mq;
+static mqd_t cmd_mq;
 
 typedef enum {
     CMD_SUCCESS = 0,
@@ -28,8 +29,6 @@ typedef enum {
 
 static void sig_handler(int sig) {
     ebpf_exiting = true;
-    mq_close(resp_mq);
-    mq_unlink(RESPONSE_QUEUE);
 }
 
 static void proc_event_exec(struct proc_event *e)
@@ -67,7 +66,7 @@ handle_ret:
 static void send_response(ResponseCode code) {
     char response[16];
     snprintf(response, sizeof(response), "%d", code);
-    
+
     if (mq_send(resp_mq, response, strlen(response), 0) == -1) {
         perror("mq_send response");
     }
@@ -109,7 +108,6 @@ static void handle_command(const char *command) {
 int main(int argc, char **argv) {
     struct proc_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
-    mqd_t cmd_mq;
     struct mq_attr attr = {
         .mq_flags = 0,
         .mq_maxmsg = 10,
@@ -149,13 +147,15 @@ int main(int argc, char **argv) {
 
     while (!ebpf_exiting) {
         char buffer[MAX_MSG_SIZE] = {0};
-        ssize_t bytes_read = mq_receive(cmd_mq, buffer, MAX_MSG_SIZE, NULL);
+        ssize_t bytes_read;
+
+        bytes_read = mq_receive(cmd_mq, buffer, MAX_MSG_SIZE, NULL);
 
         if (bytes_read > 0) {
             buffer[bytes_read] = '\0';
             handle_command(buffer);
         } else if (errno != EAGAIN) {
-            perror("mq_receive");
+            fprintf(stderr, "mq_receive failed with errno %d: %s\n", errno, strerror(errno));
         }
 
         ring_buffer__poll(rb, QUEUE_TIMEOUT);

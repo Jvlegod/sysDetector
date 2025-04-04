@@ -46,19 +46,26 @@ pub struct Rpc {
 
 impl Rpc {
     pub fn new() -> Result<Self> {
+        let attr = MqAttr::new (
+            0,
+            10,
+            MAX_MSG_SIZE as i64,
+            0,
+        );
+
         Ok(Self {
             cmd_fd: Some(mq_open(
                 *COMMAND_QUEUE,
                 MQ_OFlag::O_CREAT | MQ_OFlag::O_WRONLY,
                 Mode::S_IRUSR | Mode::S_IWUSR,
-                None,
+                Some(&attr),
             ).context("Failed to create command queue")?),
             
             resp_fd: Some(mq_open(
                 *RESPONSE_QUEUE,
                 MQ_OFlag::O_CREAT | MQ_OFlag::O_RDONLY,
                 Mode::S_IRUSR | Mode::S_IWUSR,
-                None,
+                Some(&attr),
             ).context("Failed to create response queue")?),
             
             is_owner: true,
@@ -96,7 +103,7 @@ impl Rpc {
 
     fn receive_response(&self) -> Result<String> {
         let mut buf = vec![0u8; MAX_MSG_SIZE];
-        let mut prio = 0u32;
+        let mut prio = 0;
         
         self.resp_fd.as_ref().ok_or(anyhow::anyhow!("Response queue closed"))?;
         
