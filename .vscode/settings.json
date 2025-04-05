@@ -8,7 +8,9 @@
         "libdwfl.h": "c",
         "bpf.h": "c",
         "dlfcn.h": "c",
-        "proc.h": "c"
+        "proc.h": "c",
+        "ctype.h": "c",
+        "dirent.h": "c"
     },
 
     "rust-analyzer.cargo.features": [],

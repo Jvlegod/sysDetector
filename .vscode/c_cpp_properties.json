@@ -4,7 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/src/sysDetector-ebpf/proc/.output",
+                "${workspaceFolder}/src/sysDetector-ebpf/.output",
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
