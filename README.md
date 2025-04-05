@@ -11,7 +11,9 @@ Monitoring tools for linux systems.
 
 ## FrameWork
 
-![alt text](docs/sysDetector.drawio.png)
+<div align="center">
+  <img src="docs/sysDetector.drawio.png" alt="description" width="500"/>
+</div>
 
 ## How to install
 

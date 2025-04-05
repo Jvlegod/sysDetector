@@ -11,7 +11,9 @@ Linux 系统监控工具
 
 ## 框架
 
-![alt text](../sysDetector.drawio.png)
+<div align="center">
+  <img src="../sysDetector.drawio.png" alt="description" width="500"/>
+</div>
 
 ## 安装指南
 
