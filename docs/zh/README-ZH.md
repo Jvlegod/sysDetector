@@ -81,3 +81,9 @@ sysDetector-cli --help
 - 添加自测试系统
 
 - fs, disk 监控等其他功能扩展...
+
+## 联系
+
+如果您有任何问题, 建议或者反馈, 欢迎联系我.
+
+- Email: ming.jvle@gmail.com

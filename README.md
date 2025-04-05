@@ -81,3 +81,9 @@ we can find out log in "/var/log/sysDetector/<model_name>.log"
 - add selftest system
 
 - ...
+
+## Contact
+
+If you have any questions, suggestions, or feedback, feel free to contact us:
+
+- Email: ming.jvle@gmail.com
