@@ -53,10 +53,18 @@ sudo python3 uninstall.py             # 执行卸载脚本
 
 ## 使用说明
 
+### 命令行工具
+
 ```bash
 # 更详细的文档
 sysDetector-cli --help
 ```
+
+### 模块配置
+
+更详细的使用方法, 你应该浏览各个子模块的文档:
+
+[proc](../../src/sysDetector-ebpf/configs/proc/README.md) [fs](../../src/sysDetector-ebpf/configs/fs/README.md)
 
 日志文件路径：
 

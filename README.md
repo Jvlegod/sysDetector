@@ -55,12 +55,22 @@ sudo python3 uninstall.py
 
 ## How to use
 
+### Command-line tool
+
+`sysDetector-cli` helps to management all modules.
+
 ```bash
-# TODO
+# TODO: add more deail docs
 sysDetector-cli --help
 ```
 
-we can find out log in "/var/log/sysDetector/sysDetector_<model_name>.log"
+### Module Configuration
+
+For more detailed usage, you should browse the documentation of each sub-module.
+
+[proc](./src/sysDetector-ebpf/configs/proc/README.md) [fs](./src/sysDetector-ebpf/configs/fs/README.md)
+
+we can find out log in "/var/log/sysDetector/<model_name>.log"
 
 ## TODO
 
