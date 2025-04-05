@@ -9,6 +9,9 @@
 
 Monitoring tools for linux systems.
 
+## FrameWork
+
+![alt text](docs/sysDetector.drawio.png)
 
 ## How to install
 

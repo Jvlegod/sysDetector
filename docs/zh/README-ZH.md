@@ -9,6 +9,10 @@
 
 Linux 系统监控工具
 
+## 框架
+
+![alt text](../sysDetector.drawio.png)
+
 ## 安装指南
 
 首先克隆代码仓库:
