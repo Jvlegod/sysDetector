@@ -25,6 +25,9 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <ctype.h>
+#include <time.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "proc.h"
 #include "proc.skel.h"
 
@@ -37,6 +40,7 @@ static void send_response(ResponseCode code) {
         fflush(log_file);
     }
 }
+
 static int parse_monitor_period(const char *value, void *data) {
     struct process_config *config = (struct process_config *)data;
     char *endptr;
@@ -127,7 +131,8 @@ static int parse_config_file(const char *filename, ino_t config_id) {
     struct process_config config = {
         .monitor_period = 3,
         .monitor_switch = false,
-        .config_id = config_id
+        .config_id = config_id,
+        .last_monitor_time = 0
     };
 
     char line[MAX_LINE_LENGTH];
@@ -244,6 +249,7 @@ static void handle_start_command(const char *config_id_str) {
     for (int i = 0; i < config_count; i++) {
         if (configs[i].config_id == config_id) {
             configs[i].monitor_switch = true;
+            configs[i].last_monitor_time = time(NULL);
             fprintf(log_file, "Started monitoring for config ID: %lu\n", (unsigned long)config_id);
             fflush(log_file);
             send_response(CMD_SUCCESS);
@@ -262,6 +268,7 @@ static void handle_list_printf(struct process_config *config, int id) {
             config->stop_cmd, config->alarm_cmd, config->monitor_period,
             config->monitor_switch ? "On" : "Off");
 }
+
 static void handle_list_command() {
     out_file = fopen(OUT_FILE_NAME, "w");
     fprintf(out_file, "Num\tID\tName\tUser\tRecover\tMonitor\tStop\tAlarm\tPeriod\tSwitch\t\n");
@@ -284,6 +291,7 @@ void print_process_config(struct process_config *config) {
     printf("\n");
     fflush(stdout);
 }
+
 static void sig_handler(int sig) {
     ebpf_exiting = true;
 }
@@ -329,7 +337,6 @@ static void handle_command(const char *command) {
         send_response(CMD_INVALID);
         return;
     }
-
 
     if (strncmp(command, PROC_LIST, 4) == 0) {
         handle_list_command();
@@ -415,6 +422,37 @@ static int proc_init_mq() {
     return 0;
 }
 
+static bool check_process_status(const char *monitor_cmd) {
+    FILE *fp = popen(monitor_cmd, "r");
+    if (!fp) {
+        perror("popen");
+        return false;
+    }
+
+    char buffer[128];
+    bool status = fgets(buffer, sizeof(buffer), fp) != NULL;
+    pclose(fp);
+    return status;
+}
+
+void *monitor_thread_func(void *arg) {
+    while (!ebpf_exiting) {
+        usleep(100000); // timeout(100ms)
+
+        time_t current_time = time(NULL);
+        for (int i = 0; i < config_count; i++) {
+            if (configs[i].monitor_switch && 
+                current_time - configs[i].last_monitor_time >= configs[i].monitor_period) {
+                bool status = check_process_status(configs[i].monitor_cmd);
+                fprintf(log_file, "Process %s status: %s\n", configs[i].name, status ? "Running" : "Stopped");
+                fflush(log_file);
+                configs[i].last_monitor_time = current_time;
+            }
+        }
+    }
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     struct proc_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
@@ -435,9 +473,9 @@ int main(int argc, char **argv) {
     }
 
 #ifdef DEBUG_PROC
-        for (int i = 0; i < config_count; i++) {
-            print_process_config(&configs[i]);
-        }
+    for (int i = 0; i < config_count; i++) {
+        print_process_config(&configs[i]);
+    }
 #endif
 
     skel = proc_bpf__open();
@@ -457,6 +495,11 @@ int main(int argc, char **argv) {
     fprintf(log_file, "eBPF monitoring started\n");
     fflush(log_file);
 
+    if (pthread_create(&monitor_thread, NULL, monitor_thread_func, NULL) != 0) {
+        perror("pthread_create");
+        goto cleanup;
+    }
+
     while (!ebpf_exiting) {
         char buffer[MAX_MSG_SIZE] = {0};
         ssize_t bytes_read;
@@ -473,6 +516,8 @@ int main(int argc, char **argv) {
 
         ring_buffer__poll(rb, QUEUE_TIMEOUT);
     }
+
+    pthread_join(monitor_thread, NULL);
 
 cleanup:
     ring_buffer__free(rb);

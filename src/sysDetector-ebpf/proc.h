@@ -79,6 +79,7 @@ struct process_config {
     int monitor_period;
     bool monitor_switch;
     ino_t config_id;
+    time_t last_monitor_time;
 };
 
 struct item_value_func {
@@ -90,6 +91,7 @@ static struct process_config *configs = NULL;
 static int config_count = 0;
 
 static volatile bool exiting = false;
+static pthread_t monitor_thread;
 void print_process_config(struct process_config *config);
 
 #endif // __PROC_H
