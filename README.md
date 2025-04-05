@@ -22,10 +22,14 @@ git submodule update --init --recursive
 compile
 
 ```bash
-# It should be executed in the “src/” directory
+# method 1:
+# It should be executed in the "src/" directory
 mkdir -p tmp && cd tmp
 sudo cmake ..
 sudo make && sudo make install
+# method 2:
+# It should be executed in the "src/" directory
+sudo python3 install.py
 ```
 
 ## How to start
@@ -48,8 +52,6 @@ sudo systemctl start <model_name>.service
 
 ```bash
 # It should be executed in the "src/" directory
-systemctl disable sysDetector.service
-systemctl stop sysDetector.service
 sudo python3 uninstall.py
 ```
 

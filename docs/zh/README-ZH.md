@@ -21,10 +21,14 @@ git submodule update --init --recursive  # 初始化并更新子模块
 编译安装
 
 ```bash
+# 方法1:
 # 需要在 "src/" 目录下执行
 mkdir -p tmp && cd tmp
 sudo cmake ..
 sudo make && sudo make install
+# 方法2:
+# 需要在 "src/" 目录下执行
+sudo python3 install.py
 ```
 
 ## 服务启动
@@ -46,9 +50,7 @@ sudo systemctl start <模块名称>.service
 
 ```bash
 # 需要在 "src/" 目录下执行
-systemctl disable sysDetector.service  # 禁用服务
-systemctl stop sysDetector.service     # 停止服务
-sudo python3 uninstall.py             # 执行卸载脚本
+sudo python3 uninstall.py
 ```
 
 ## 使用说明
@@ -69,7 +71,7 @@ sysDetector-cli --help
 日志文件路径：
 
 ```bash
-/var/log/sysDetector/sysDetector_<模块名称>.log
+/var/log/sysDetector/<模块名称>.log
 ```
 
 ## 待办事项
