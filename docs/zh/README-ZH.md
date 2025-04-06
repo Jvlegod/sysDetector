@@ -5,7 +5,7 @@
 [![EN Doc](https://img.shields.io/badge/Document-English-blue)](./docs/README-EN.md)
 [![CN Doc](https://img.shields.io/badge/文档-中文-red)](./docs/zh/README_ZH.md)
 
-> 📌 当前文档版本：v0.1.0 | [查看更新日志](CHANGELOG.md)
+> 📌 当前文档版本：v0.1.0 | [查看更新日志](CHANGELOG-zh.md)
 
 Linux 系统监控工具
 
@@ -79,6 +79,12 @@ sysDetector-cli --help
 ```bash
 /var/log/sysDetector/<模块名称>.log
 ```
+
+## 关键目录
+
+- `/etc/sysDetector` 存放子模块配置文件的根目录
+
+- `/var/log/sysDetector` 日志存放目录
 
 ## 待办事项
 

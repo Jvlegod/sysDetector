@@ -39,7 +39,7 @@ sudo python3 install.py
 
 ## How to start
 
-"sysDetector.service" is the basic service.
+`sysDetector.service` is the basic service.
 
 ```bash
 sudo systemctl start sysDetector.service
@@ -49,8 +49,8 @@ systemctl status sysDetector # check if it is OK.
 we can start with model.
 
 ```bash
-# model exists in misc dir
-sudo systemctl start <model_name>.service
+# module exists in misc dir
+sudo systemctl start <module_name>.service
 ```
 
 ## How to uninstall
@@ -78,6 +78,12 @@ For more detailed usage, you should browse the documentation of each sub-module.
 [proc](./src/sysDetector-ebpf/configs/proc/README.md) [fs](./src/sysDetector-ebpf/configs/fs/README.md)
 
 we can find out log in "/var/log/sysDetector/<model_name>.log"
+
+## Key directories
+
+- `/etc/sysDetector` Root directory where submodule configuration files are stored
+
+- `/var/log/sysDetector` Log storage directory
 
 ## TODO
 
