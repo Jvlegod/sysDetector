@@ -56,13 +56,34 @@ static mqd_t resp_mq;
 static mqd_t cmd_mq;
 static FILE *log_file;
 static FILE *out_file;
+
+#define WRITE_LOG(msg, ...) \
+    do { \
+        time_t rawtime; \
+        struct tm * timeinfo; \
+        time(&rawtime); \
+        timeinfo = localtime(&rawtime); \
+        char time_str[26]; \
+        asctime_r(timeinfo, time_str); \
+        time_str[strcspn(time_str, "\n")] = 0; \
+        if (fprintf(log_file, "[%s] ", time_str) < 0) { \
+            perror("Failed to write timestamp to log"); \
+        } \
+        if (fprintf(log_file, msg, ##__VA_ARGS__) < 0) { \
+            perror("Failed to write message to log"); \
+        } \
+        if (fprintf(log_file, "\n") < 0) { \
+            perror("Failed to write newline to log"); \
+        } \
+        fflush(log_file); \
+    } while(0)
+
 static void send_response(ResponseCode code) {
     char response[16];
     snprintf(response, sizeof(response), "%d", code);
 
     if (mq_send(resp_mq, response, strlen(response), 0) == -1) {
-        fprintf(log_file, "mq_send response: %s\n", strerror(errno));
-        fflush(log_file);
+        WRITE_LOG(log_file, "mq_send response: %s", strerror(errno));
     }
 }
 
@@ -275,14 +296,12 @@ static void handle_proc_status_command(const char *config_id_str, bool status) {
         if (configs[i].config_id == config_id) {
             configs[i].monitor_switch = status;
             configs[i].last_monitor_time = time(NULL);
-            fprintf(log_file, "Started monitoring for config ID: %lu\n", (unsigned long)config_id);
-            fflush(log_file);
+            WRITE_LOG(log_file, "Started monitoring for config ID: %lu", (unsigned long)config_id);
             send_response(CMD_SUCCESS);
             return;
         }
     }
-    fprintf(log_file, "Config ID not found: %s\n", config_id_str);
-    fflush(log_file);
+    WRITE_LOG(log_file, "Config ID not found: %s", config_id_str);
     send_response(CMD_INVALID);
 }
 
@@ -292,13 +311,11 @@ static void handle_list_printf(struct process_config *config, int id) {
             config->user, config->recover_cmd, config->monitor_cmd,
             config->stop_cmd, config->alarm_cmd, config->monitor_period,
             config->monitor_switch ? "On" : "Off");
-    fflush(out_file);
 }
 
 static void handle_list_command() {
     out_file = fopen(OUT_FILE_NAME, "w");
     fprintf(out_file, "Num\tID\tName\tUser\tRecover\tMonitor\tStop\tAlarm\tPeriod\tSwitch\t\n");
-    fflush(out_file);
     for (int i = 0; i < config_count; i++) {
         handle_list_printf(&configs[i], i);
     }
@@ -325,28 +342,27 @@ static void sig_handler(int sig) {
 
 static void proc_event_exec(struct proc_event *e)
 {
-    fprintf(log_file, "PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x\n", 
+    WRITE_LOG(log_file, "PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x", 
             e->pid, e->ppid, e->comm, e->filename, e->stack_id);
-    fflush(log_file);
 }
 
 static void proc_event_exit(struct proc_event *e)
 {
-    fprintf(log_file, "PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x\n", 
+    WRITE_LOG(log_file, "PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x", 
             e->pid, e->ppid, e->comm, e->stack_id);
-    fflush(log_file);
 }
 
+// ebpf interface
 static int handle_event(void *ctx, void *data, size_t sz) {
     if (ebpf_running) {
         struct proc_event *e = data;
         switch (e->type)
         {
         case EVENT_EXEC:
-            proc_event_exec(e);
+            // proc_event_exec(e);
             goto handle_ret;
         case EVENT_EXIT:
-            proc_event_exit(e);
+            // proc_event_exit(e);
             goto handle_ret;
         default:
             return -1;
@@ -359,8 +375,7 @@ handle_ret:
 
 static void handle_command(const char *command[]) {
     if (!command) {
-        fprintf(log_file, "Invalid command format\n");
-        fflush(log_file);
+        WRITE_LOG(log_file, "Invalid command format");
         send_response(CMD_INVALID);
         return;
     }
@@ -370,27 +385,23 @@ static void handle_command(const char *command[]) {
         send_response(CMD_SUCCESS);
     } else if (strncmp(command[0], PROC_START, 5) == 0) {
         if (!ebpf_running) {
-            fprintf(log_file, "Starting monitoring Proc\n");
-            fflush(log_file);
+            WRITE_LOG(log_file, "Starting monitoring Proc");
             // TODO: Here we need to handle operations that pass in multiple parameters
             handle_proc_status_command(command[1], true);
             ebpf_running = true;
             send_response(CMD_SUCCESS);
         } else {
-            fprintf(log_file, "eBPF service is already running\n");
-            fflush(log_file);
+            WRITE_LOG(log_file, "eBPF service is already running");
             send_response(CMD_EBPF_ERR);
         }
     } else if (strncmp(command[0], PROC_STOP, 4) == 0) {
         if (ebpf_running) {
-            fprintf(log_file, "Stopping monitoring Proc\n");
-            fflush(log_file);
+            WRITE_LOG(log_file, "Stopping monitoring Proc");
             handle_proc_status_command(command[1], false);
             ebpf_running = false;
             send_response(CMD_SUCCESS);
         } else {
-            fprintf(log_file, "eBPF service is not running\n");
-            fflush(log_file);
+            WRITE_LOG(log_file, "eBPF service is not running");
             send_response(CMD_EBPF_ERR);
         }
     } else {
@@ -432,16 +443,14 @@ static int proc_init_mq() {
 
     resp_mq = mq_open(RESPONSE_QUEUE, O_WRONLY | O_CREAT, 0666, &attr);
     if (resp_mq == (mqd_t)-1) {
-        fprintf(log_file, "mq_open response: %s\n", strerror(errno));
-        fflush(log_file);
+        WRITE_LOG(log_file, "mq_open response: %s", strerror(errno));
         fclose(log_file);
         return EXIT_FAILURE;
     }
 
     cmd_mq = mq_open(COMMAND_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, 0666, &attr);
     if (cmd_mq == (mqd_t)-1) {
-        fprintf(log_file, "mq_open command: %s\n", strerror(errno));
-        fflush(log_file);
+        WRITE_LOG(log_file, "mq_open command: %s", strerror(errno));
         mq_close(resp_mq);
         fclose(log_file);
         return EXIT_FAILURE;
@@ -472,8 +481,7 @@ void *monitor_thread_func(void *arg) {
             if (configs[i].monitor_switch && 
                 current_time - configs[i].last_monitor_time >= configs[i].monitor_period) {
                 bool status = check_process_status(configs[i].monitor_cmd);
-                fprintf(log_file, "Process %s status: %s\n", configs[i].name, status ? "Running" : "Stopped");
-                fflush(log_file);
+                WRITE_LOG("Process [%s] status: %s", configs[i].name, status ? "Running" : "Stopped");
                 configs[i].last_monitor_time = current_time;
             }
         }
@@ -534,20 +542,17 @@ int main(int argc, char **argv) {
 
     skel = proc_bpf__open();
     if (!skel || proc_bpf__load(skel) || proc_bpf__attach(skel)) {
-        fprintf(log_file, "eBPF setup failed\n");
-        fflush(log_file);
+        WRITE_LOG(log_file, "eBPF setup failed");
         goto cleanup;
     }
 
     rb = ring_buffer__new(bpf_map__fd(skel->maps.proc_events), handle_event, NULL, NULL);
     if (!rb) {
-        fprintf(log_file, "Failed to create ring buffer\n");
-        fflush(log_file);
+        WRITE_LOG(log_file, "Failed to create ring buffer");
         goto cleanup;
     }
 
-    fprintf(log_file, "eBPF monitoring started\n");
-    fflush(log_file);
+    WRITE_LOG(log_file, "eBPF monitoring started");
 
     if (pthread_create(&monitor_thread, NULL, monitor_thread_func, NULL) != 0) {
         perror("pthread_create");
@@ -573,8 +578,7 @@ int main(int argc, char **argv) {
             }
             handle_command((const char **)token);
         } else if (errno != EAGAIN) {
-            fprintf(log_file, "mq_receive failed with errno %d: %s\n", errno, strerror(errno));
-            fflush(log_file);
+            WRITE_LOG(log_file, "mq_receive failed with errno %d: %s", errno, strerror(errno));
         }
 
         ring_buffer__poll(rb, QUEUE_TIMEOUT);
