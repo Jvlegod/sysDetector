@@ -21,34 +21,35 @@ use anyhow::Result;
 use serde::{Serialize, Deserialize};
 
 const DEFAULT_LOG_LEVEL: &str = "info";
+pub const PROC_POSSIBLE_OPT_VALUES: &[&str] = &["start", "stop", "list"];
 
 #[derive(Debug, Clone, Subcommand, Serialize, Deserialize)]
 pub enum Command {
     /// Set proc op
-    PROC {
-        identifier: String,
-
+    PROC {        
         /// Set proc opt
-        #[clap(required = true)]
+        #[clap(required = true, possible_values = PROC_POSSIBLE_OPT_VALUES)]
         opt: String,
+        
+        identifier: Vec<String>,
     },
 
     /// Set fs op
     FS {
-        identifier: String,
-
         /// Set fs opt
         #[clap(required = true)]
         opt: String,
+        
+        identifier: String,
     },
 
     /// Set list op
     LIST {
-        identifier: String,
-
         /// Set list opt
         #[clap(required = true)]
         opt: String,
+        
+        identifier: String,
     },
 }
 
@@ -66,17 +67,17 @@ pub struct Arguments {
 impl Arguments {
     pub fn new() -> Result<Self> {
         let mut args = Self::parse();
-        match &mut args.subcommand {
-            Command::PROC { ref mut identifier, .. } => {
-                *identifier = "proc".to_string();
-            }
-            Command::FS { ref mut identifier, .. } => {
-                *identifier = "fs".to_string();
-            }
-            Command::LIST { ref mut identifier, .. } => {
-                *identifier = "list".to_string();
-            }
-        }
+        // match &mut args.subcommand {
+        //     Command::PROC { ref mut identifier, .. } => {
+        //         todo!()
+        //     }
+        //     Command::FS { ref mut identifier, .. } => {
+        //         todo!()
+        //     }
+        //     Command::LIST { ref mut identifier, .. } => {
+        //         todo!()
+        //     }
+        // }
         Ok(args)
     }
 

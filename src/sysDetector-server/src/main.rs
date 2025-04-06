@@ -31,8 +31,7 @@ mod args;
 
 use anyhow::Result;
 
-// const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
-const SOCKET_FILE_NAME: &str = "/home/jvle/Desktop/temp/sysDetector.sock";
+const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
 
 async fn handle_connection(mut stream: tokio::net::UnixStream, rpc: Arc<Mutex<rpc::Rpc>>) -> Result<()> {
     let mut len_buf = [0; 4];

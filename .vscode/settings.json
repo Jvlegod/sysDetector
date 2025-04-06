@@ -10,7 +10,9 @@
         "dlfcn.h": "c",
         "proc.h": "c",
         "ctype.h": "c",
-        "dirent.h": "c"
+        "dirent.h": "c",
+        "proc.skel.h": "c",
+        "getopt.h": "c"
     },
 
     "rust-analyzer.cargo.features": [],

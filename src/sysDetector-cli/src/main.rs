@@ -25,11 +25,14 @@ use self::{
     args::{Arguments},
 };
 
-// const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
-const SOCKET_FILE_NAME: &str = "/home/jvle/Desktop/temp/sysDetector.sock";
+const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
 const LOG_FILE_PATH: &str = "/var/log/sysDetector/out.log";
 
 async fn read_log_file() -> Result<String> {
+    if let Err(_) = fs::metadata(LOG_FILE_PATH).await {
+        return Err(anyhow::anyhow!("Log file not found at path: {}", LOG_FILE_PATH));
+    }
+
     let mut file = fs::File::open(LOG_FILE_PATH).await?;
     let mut contents = String::new();
     file.read_to_string(&mut contents).await?;
@@ -54,22 +57,24 @@ async fn handle_connection() -> Result<()> {
     debug!("Received response: {}", response_code);
 
     match args.subcommand {
-        args::Command::PROC { identifier, opt } => {
-            debug!("Received PROC command with identifier: {}, opt: {}", identifier, opt);
-            match read_log_file().await {
-                Ok(content) => {
-                    println!("{}", content);
-                }
-                Err(e) => {
-                    debug!("Failed to read log file: {}", e);
+        args::Command::PROC { opt, identifier } => {
+            debug!("Received PROC command with opt: {}, identifier: {:?}", opt, identifier);
+            if opt == args::PROC_POSSIBLE_OPT_VALUES[2] {
+                match read_log_file().await {
+                    Ok(content) => {
+                        println!("{}", content);
+                    }
+                    Err(e) => {
+                        debug!("Failed to read log file: {}", e);
+                    }
                 }
             }
         }
-        args::Command::FS { identifier, opt } => {
-            debug!("Received FS command with identifier: {}, opt: {}", identifier, opt);
+        args::Command::FS { opt, identifier } => {
+            debug!("Received FS command with identifier: {}, opt: {}", opt, identifier);
         }
-        args::Command::LIST { identifier, opt } => {
-            debug!("Received LIST command with identifier: {}, opt: {}", identifier, opt);
+        args::Command::LIST { opt, identifier } => {
+            debug!("Received LIST command with identifier: {}, opt: {}", opt, identifier);
         }
     }
 

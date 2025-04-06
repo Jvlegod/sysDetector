@@ -30,7 +30,8 @@ INSTALL_PATHS = [
     Path("/usr/local/libexec/sysDetector"),
     Path("/etc/sysDetector"),
     Path("/usr/local/lib/systemd/system/sysDetector.service"),
-    Path("/usr/local/lib/systemd/system/sysDetector-proc.service")
+    Path("/usr/local/lib/systemd/system/sysDetector-proc.service"),
+    Path("/var/run/sysDetector.sock")
 ]
 
 # Potential empty directories to clean up

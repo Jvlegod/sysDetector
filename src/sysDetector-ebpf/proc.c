@@ -28,9 +28,34 @@
 #include <time.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <getopt.h>
 #include "proc.h"
 #include "proc.skel.h"
 
+struct process_config {
+    char name[64];
+    char user[32];
+    char recover_cmd[256];
+    char monitor_cmd[256];
+    char stop_cmd[256];
+    char alarm_cmd[256];
+    int monitor_period;
+    bool monitor_switch;
+    ino_t config_id;
+    time_t last_monitor_time;
+};
+
+static struct process_config *configs = NULL;
+static int config_count = 0;
+static volatile bool exiting = false;
+const char *PROC_POSSIBLE_OPT_VALUES[] = {"start", "stop", "list"};
+static bool ebpf_exiting = false;
+static bool ebpf_running = false;
+static pthread_t monitor_thread;
+static mqd_t resp_mq;
+static mqd_t cmd_mq;
+static FILE *log_file;
+static FILE *out_file;
 static void send_response(ResponseCode code) {
     char response[16];
     snprintf(response, sizeof(response), "%d", code);
@@ -244,11 +269,11 @@ static int proc_parse_config() {
     return 0;
 }
 
-static void handle_start_command(const char *config_id_str) {
+static void handle_proc_status_command(const char *config_id_str, bool status) {
     ino_t config_id = strtoul(config_id_str, NULL, 10);
     for (int i = 0; i < config_count; i++) {
         if (configs[i].config_id == config_id) {
-            configs[i].monitor_switch = true;
+            configs[i].monitor_switch = status;
             configs[i].last_monitor_time = time(NULL);
             fprintf(log_file, "Started monitoring for config ID: %lu\n", (unsigned long)config_id);
             fflush(log_file);
@@ -267,18 +292,20 @@ static void handle_list_printf(struct process_config *config, int id) {
             config->user, config->recover_cmd, config->monitor_cmd,
             config->stop_cmd, config->alarm_cmd, config->monitor_period,
             config->monitor_switch ? "On" : "Off");
+    fflush(out_file);
 }
 
 static void handle_list_command() {
     out_file = fopen(OUT_FILE_NAME, "w");
     fprintf(out_file, "Num\tID\tName\tUser\tRecover\tMonitor\tStop\tAlarm\tPeriod\tSwitch\t\n");
+    fflush(out_file);
     for (int i = 0; i < config_count; i++) {
         handle_list_printf(&configs[i], i);
     }
     fclose(out_file);
 }
 
-void print_process_config(struct process_config *config) {
+static void print_process_config(struct process_config *config) {
     printf("Config ID: %lu\n", (unsigned long)config->config_id);
     printf("Name: %s\n", config->name);
     printf("User: %s\n", config->user);
@@ -330,7 +357,7 @@ handle_ret:
     return 0;
 }
 
-static void handle_command(const char *command) {
+static void handle_command(const char *command[]) {
     if (!command) {
         fprintf(log_file, "Invalid command format\n");
         fflush(log_file);
@@ -338,14 +365,15 @@ static void handle_command(const char *command) {
         return;
     }
 
-    if (strncmp(command, PROC_LIST, 4) == 0) {
+    if (strncmp(command[0], PROC_LIST, 4) == 0) {
         handle_list_command();
         send_response(CMD_SUCCESS);
-    } else if (strncmp(command, PROC_START, 5) == 0) {
+    } else if (strncmp(command[0], PROC_START, 5) == 0) {
         if (!ebpf_running) {
             fprintf(log_file, "Starting monitoring Proc\n");
             fflush(log_file);
-            // handle_start_command(command + 6);
+            // TODO: Here we need to handle operations that pass in multiple parameters
+            handle_proc_status_command(command[1], true);
             ebpf_running = true;
             send_response(CMD_SUCCESS);
         } else {
@@ -353,10 +381,11 @@ static void handle_command(const char *command) {
             fflush(log_file);
             send_response(CMD_EBPF_ERR);
         }
-    } else if (strncmp(command, PROC_STOP, 4) == 0) {
+    } else if (strncmp(command[0], PROC_STOP, 4) == 0) {
         if (ebpf_running) {
             fprintf(log_file, "Stopping monitoring Proc\n");
             fflush(log_file);
+            handle_proc_status_command(command[1], false);
             ebpf_running = false;
             send_response(CMD_SUCCESS);
         } else {
@@ -365,7 +394,6 @@ static void handle_command(const char *command) {
             send_response(CMD_EBPF_ERR);
         }
     } else {
-        fprintf(log_file, "Unknown command: %s\n", command);
         fflush(log_file);
         send_response(CMD_INVALID);
     }
@@ -453,6 +481,32 @@ void *monitor_thread_func(void *arg) {
     return NULL;
 }
 
+static int proc_split_space(char *src_buffer, char *dest_token[]) {
+    if (src_buffer == NULL || dest_token == NULL) {
+        return -1;
+    }
+
+    int token_count = 0;
+    char *token = strtok(src_buffer, " ");
+
+    while (token != NULL && token_count < MAX_MSG_SIZE - 1) {
+        dest_token[token_count] = token;
+        token_count++;
+        token = strtok(NULL, " ");
+    }
+    dest_token[token_count] = NULL;
+
+    return token_count;
+}
+
+static int proc_is_valid_opt(const char *opt) {
+    for (int i = 0; i < sizeof(PROC_POSSIBLE_OPT_VALUES) / sizeof(PROC_POSSIBLE_OPT_VALUES[0]); i++) {
+        if (strcmp(opt, PROC_POSSIBLE_OPT_VALUES[i]) == 0) {
+            return EXIT_FAILURE;
+        }
+    }
+    return EXIT_SUCCESS;
+}
 int main(int argc, char **argv) {
     struct proc_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
@@ -502,13 +556,22 @@ int main(int argc, char **argv) {
 
     while (!ebpf_exiting) {
         char buffer[MAX_MSG_SIZE] = {0};
+        char *token[MAX_MSG_SIZE];
         ssize_t bytes_read;
 
         bytes_read = mq_receive(cmd_mq, buffer, MAX_MSG_SIZE, NULL);
 
         if (bytes_read > 0) {
             buffer[bytes_read] = '\0';
-            handle_command(buffer);
+            printf("bytes: %s\n", buffer);
+            proc_split_space(buffer, token);
+            if (proc_is_valid_opt(token[0])) {
+                send_response(CMD_EBPF_ERR);
+            }
+            for (int i = 0; token[i]; i ++) {
+                printf("token: %s\n", token[i]);
+            }
+            handle_command((const char **)token);
         } else if (errno != EAGAIN) {
             fprintf(log_file, "mq_receive failed with errno %d: %s\n", errno, strerror(errno));
             fflush(log_file);
@@ -527,5 +590,8 @@ cleanup:
     mq_close(resp_mq);
     mq_unlink(RESPONSE_QUEUE);
     fclose(log_file);
+    if (remove(OUT_FILE_NAME) != 0) {
+        perror("Failed to remove output file");
+    }
     return EXIT_SUCCESS;
 }    

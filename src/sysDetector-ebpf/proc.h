@@ -35,13 +35,6 @@
 #define MAX_MSG_SIZE   1024
 #define QUEUE_TIMEOUT  100  // milliseconds
 
-static bool ebpf_exiting = false;
-static bool ebpf_running = false;
-static mqd_t resp_mq;
-static mqd_t cmd_mq;
-static FILE *log_file;
-static FILE *out_file;
-
 typedef enum {
     CMD_SUCCESS = 0,
     CMD_INVALID = -1,
@@ -69,29 +62,9 @@ struct proc_event {
     __u32 stack_id;
 };
 
-struct process_config {
-    char name[64];
-    char user[32];
-    char recover_cmd[256];
-    char monitor_cmd[256];
-    char stop_cmd[256];
-    char alarm_cmd[256];
-    int monitor_period;
-    bool monitor_switch;
-    ino_t config_id;
-    time_t last_monitor_time;
-};
-
 struct item_value_func {
     const char *key;
     int (*func)(const char *, void *);
 };
-
-static struct process_config *configs = NULL;
-static int config_count = 0;
-
-static volatile bool exiting = false;
-static pthread_t monitor_thread;
-void print_process_config(struct process_config *config);
 
 #endif // __PROC_H

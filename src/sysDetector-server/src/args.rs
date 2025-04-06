@@ -19,32 +19,35 @@ use log::{debug, LevelFilter};
 use clap::Subcommand;
 use serde::{Serialize, Deserialize};
 
+
+pub const PROC_POSSIBLE_OPT_VALUES: &[&str] = &["start", "stop", "list"];
+
 #[derive(Debug, Clone, Subcommand, Serialize, Deserialize)]
 pub enum Command {
     /// Set proc op
-    PROC {
-        identifier: String,
-
+    PROC {        
         /// Set proc opt
-        #[clap(required = true)]
+        #[clap(required = true, possible_values = PROC_POSSIBLE_OPT_VALUES)]
         opt: String,
+        
+        identifier: Vec<String>,
     },
 
     /// Set fs op
     FS {
-        identifier: String,
-
         /// Set fs opt
         #[clap(required = true)]
         opt: String,
+        
+        identifier: String,
     },
 
     /// Set list op
     LIST {
-        identifier: String,
-
         /// Set list opt
         #[clap(required = true)]
         opt: String,
+        
+        identifier: String,
     },
 }

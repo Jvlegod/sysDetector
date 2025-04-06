@@ -25,6 +25,8 @@ use std::time::Duration;
 use crate::args::Command;
 use lazy_static::lazy_static;
 
+use crate::args;
+
 lazy_static! {
     static ref COMMAND_QUEUE: &'static CStr = {
         CStr::from_bytes_with_nul(b"/ebpf_command_queue\0").unwrap()
@@ -139,13 +141,14 @@ impl Rpc {
 
     fn validate_command(&self, cmd: &Command) -> Result<String> {
         match cmd {
-            Command::PROC { identifier, opt } => {
-                if opt == "start" {
-                    Ok(opt.to_string())
-                } else if opt == "stop" {
-                    Ok(opt.to_string())
-                } else if opt == "list" {
-                    Ok(opt.to_string())
+            Command::PROC { opt, identifier } => {
+                if args::PROC_POSSIBLE_OPT_VALUES.contains(&opt.as_str()) {
+                    let mut result = opt.to_string();
+                    if !identifier.is_empty() {
+                        result.push_str(" ");
+                        result.push_str(&identifier.join(" "));
+                    }
+                    Ok(result)
                 } else {
                     Err(anyhow::anyhow!("Invalid PROC operation"))
                 }
