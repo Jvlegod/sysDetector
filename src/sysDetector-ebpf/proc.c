@@ -69,9 +69,11 @@ static FILE *out_file;
         if (fprintf(log_file, "[%s] ", time_str) < 0) { \
             perror("Failed to write timestamp to log"); \
         } \
+        fflush(log_file); \
         if (fprintf(log_file, msg, ##__VA_ARGS__) < 0) { \
             perror("Failed to write message to log"); \
         } \
+        fflush(log_file); \
         if (fprintf(log_file, "\n") < 0) { \
             perror("Failed to write newline to log"); \
         } \
@@ -459,17 +461,38 @@ static int proc_init_mq() {
     return 0;
 }
 
+/* TODO： Here we want to check all aspects of the process, specifically in "proc/README.md",
+ * so far we have not used the "STOP_COMMAND", when checking the exception we should
+ * force the use of the stop instruction, in the case of ineffective, we should kill 
+ * the process directly.
+ */
 static bool check_process_status(const char *monitor_cmd) {
-    FILE *fp = popen(monitor_cmd, "r");
+    FILE *fp = popen(monitor_cmd, "re");
     if (!fp) {
         perror("popen");
         return false;
     }
 
     char buffer[128];
-    bool status = fgets(buffer, sizeof(buffer), fp) != NULL;
-    pclose(fp);
-    return status;
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        /* TODO: There's an error when I don't read it, so I hope it's fixed.
+         * If it does, you can remove the “while”.
+         */
+        // WRITE_LOG("Monitor command output: %s", buffer);
+    }
+
+    int status = pclose(fp);
+    if (status == -1) {
+        perror("pclose");
+        return false;
+    }
+
+    if (WIFEXITED(status)) {
+        int exit_status = WEXITSTATUS(status);
+        return (exit_status == 0);
+    }
+
+    return false;
 }
 
 void *monitor_thread_func(void *arg) {
@@ -480,14 +503,44 @@ void *monitor_thread_func(void *arg) {
         for (int i = 0; i < config_count; i++) {
             if (configs[i].monitor_switch && 
                 current_time - configs[i].last_monitor_time >= configs[i].monitor_period) {
+                // TODO: status In the future, it may not be possible to satisfy only true and false cases.
                 bool status = check_process_status(configs[i].monitor_cmd);
                 WRITE_LOG("Process [%s] status: %s", configs[i].name, status ? "Running" : "Stopped");
+
+                if (!status) {
+                    int retry_count = 0;
+                    // Tried three reboots.
+                    while (retry_count < 3) {
+                        WRITE_LOG("Attempting to restart process [%s], attempt %d", configs[i].name, retry_count + 1);
+                        FILE *fp = popen(configs[i].recover_cmd, "r");
+                        if (fp) {
+                            pclose(fp);
+                        }
+                        sleep(2); 
+                        status = check_process_status(configs[i].monitor_cmd);
+                        if (status) {
+                            WRITE_LOG("Process [%s] restarted successfully", configs[i].name);
+                            break;
+                        }
+                        retry_count++;
+                    }
+
+                    if (!status) {
+                        WRITE_LOG("Failed to restart process [%s] after 3 attempts. Executing alarm command.", configs[i].name);
+                        FILE *fp = popen(configs[i].alarm_cmd, "r");
+                        if (fp) {
+                            pclose(fp);
+                        }
+                        configs[i].monitor_switch = false;
+                    }
+                }
+
                 configs[i].last_monitor_time = current_time;
             }
         }
     }
     return NULL;
-}
+}    
 
 static int proc_split_space(char *src_buffer, char *dest_token[]) {
     if (src_buffer == NULL || dest_token == NULL) {
