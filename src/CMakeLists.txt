@@ -106,12 +106,11 @@ add_custom_target(build_sysDetector_ebpf ALL
 
 add_custom_command(TARGET build_sysDetector_ebpf POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SYSDETECTOR_LIBEXEC_DIR}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${${SYSDETECTOR_ETC_DIR}}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${SYSDETECTOR_ETC_DIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SYSDETECTOR_ETC_DIR}/proc
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SYSDETECTOR_ETC_DIR}/fs
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/proc ${SYSDETECTOR_LIBEXEC_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/proc ${SYSDETECTOR_ETC_DIR}/proc
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/fs ${SYSDETECTOR_ETC_DIR}/fs
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/configs ${SYSDETECTOR_ETC_DIR}
     COMMENT "Copying sysDetector-ebpf executables to ${SYSDETECTOR_LIBEXEC_DIR}"
 )
 
