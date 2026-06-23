@@ -11,14 +11,14 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- * 
+ *
  * Author: Keke Ming
  * Date: 20250405
  */
-use log::{debug, LevelFilter};
-use clap::{Parser, Subcommand};
 use anyhow::Result;
-use serde::{Serialize, Deserialize};
+use clap::{Parser, Subcommand};
+use log::LevelFilter;
+use serde::{Deserialize, Serialize};
 
 const DEFAULT_LOG_LEVEL: &str = "info";
 pub const PROC_POSSIBLE_OPT_VALUES: &[&str] = &["start", "stop", "list"];
@@ -26,11 +26,11 @@ pub const PROC_POSSIBLE_OPT_VALUES: &[&str] = &["start", "stop", "list"];
 #[derive(Debug, Clone, Subcommand, Serialize, Deserialize)]
 pub enum Command {
     /// Set proc op
-    PROC {        
+    PROC {
         /// Set proc opt
         #[clap(required = true, possible_values = PROC_POSSIBLE_OPT_VALUES)]
         opt: String,
-        
+
         identifier: Vec<String>,
     },
 
@@ -39,7 +39,7 @@ pub enum Command {
         /// Set fs opt
         #[clap(required = true)]
         opt: String,
-        
+
         identifier: String,
     },
 
@@ -48,7 +48,7 @@ pub enum Command {
         /// Set list opt
         #[clap(required = true)]
         opt: String,
-        
+
         identifier: String,
     },
 }
@@ -66,7 +66,7 @@ pub struct Arguments {
 
 impl Arguments {
     pub fn new() -> Result<Self> {
-        let mut args = Self::parse();
+        let args = Self::parse();
         // match &mut args.subcommand {
         //     Command::PROC { ref mut identifier, .. } => {
         //         todo!()

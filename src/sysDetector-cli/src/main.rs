@@ -11,26 +11,31 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- * 
+ *
  * Author: Keke Ming
  * Date: 20250405
  */
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, fs};
-use log::{debug, LevelFilter};
-use serde_json;
 use anyhow::Result;
+use log::debug;
+use serde_json;
+use tokio::{
+    fs,
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::UnixStream,
+};
 mod args;
 
-use self::{
-    args::{Arguments},
-};
+use self::args::Arguments;
 
 const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
 const LOG_FILE_PATH: &str = "/var/log/sysDetector/out.log";
 
 async fn read_log_file() -> Result<String> {
     if let Err(_) = fs::metadata(LOG_FILE_PATH).await {
-        return Err(anyhow::anyhow!("Log file not found at path: {}", LOG_FILE_PATH));
+        return Err(anyhow::anyhow!(
+            "Log file not found at path: {}",
+            LOG_FILE_PATH
+        ));
     }
 
     let mut file = fs::File::open(LOG_FILE_PATH).await?;
@@ -38,11 +43,10 @@ async fn read_log_file() -> Result<String> {
     file.read_to_string(&mut contents).await?;
     Ok(contents)
 }
-async fn handle_connection() -> Result<()> {
+async fn handle_connection(args: &Arguments) -> Result<()> {
     let socket_path = SOCKET_FILE_NAME;
     let mut stream = UnixStream::connect(socket_path).await?;
 
-    let args = Arguments::new()?;
     let serialized_cmd = serde_json::to_string(&args.subcommand)?;
     let cmd_bytes = serialized_cmd.as_bytes();
 
@@ -52,13 +56,16 @@ async fn handle_connection() -> Result<()> {
 
     let mut buf = [0; 4];
     stream.read_exact(&mut buf).await?;
-    let response_code =  i32::from_be_bytes(buf);
+    let response_code = i32::from_be_bytes(buf);
 
     debug!("Received response: {}", response_code);
 
-    match args.subcommand {
+    match &args.subcommand {
         args::Command::PROC { opt, identifier } => {
-            debug!("Received PROC command with opt: {}, identifier: {:?}", opt, identifier);
+            debug!(
+                "Received PROC command with opt: {}, identifier: {:?}",
+                opt, identifier
+            );
             if opt == args::PROC_POSSIBLE_OPT_VALUES[2] {
                 match read_log_file().await {
                     Ok(content) => {
@@ -71,10 +78,16 @@ async fn handle_connection() -> Result<()> {
             }
         }
         args::Command::FS { opt, identifier } => {
-            debug!("Received FS command with identifier: {}, opt: {}", opt, identifier);
+            debug!(
+                "Received FS command with identifier: {}, opt: {}",
+                opt, identifier
+            );
         }
         args::Command::LIST { opt, identifier } => {
-            debug!("Received LIST command with identifier: {}, opt: {}", opt, identifier);
+            debug!(
+                "Received LIST command with identifier: {}, opt: {}",
+                opt, identifier
+            );
         }
     }
 
@@ -86,13 +99,11 @@ async fn main() -> Result<()> {
     let args = Arguments::new()?;
     let log_level = args.get_log_level()?;
 
-    // env_logger::Builder::new()
-    //    .filter_level(log_level)
-    //    .init();
+    env_logger::Builder::new().filter_level(log_level).init();
 
     debug!("Starting with arguments: {:?}", args.subcommand);
 
-    handle_connection().await?;
+    handle_connection(&args).await?;
 
     Ok(())
 }
