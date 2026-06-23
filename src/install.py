@@ -1,6 +1,3 @@
-import os
-import subprocess
-
 #!/usr/bin/env python3
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,27 +11,45 @@ import subprocess
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# 
+#
 # Author: Keke Ming
 # Date: 20250405
-src_directory = os.getcwd()
 
-try:
-    tmp_directory = os.path.join(src_directory, 'tmp')
-    os.makedirs(tmp_directory, exist_ok=True)
-    os.chdir(tmp_directory)
+import os
+import subprocess
+import sys
+from pathlib import Path
 
-    print("Running cmake...")
-    subprocess.run(['sudo', 'cmake', '..'], check=True)
 
-    print("Running make...")
-    subprocess.run(['sudo', 'make'], check=True)
+def run_command(command, cwd):
+    print(f"Running: {' '.join(command)}")
+    subprocess.run(command, cwd=cwd, check=True)
 
-    print("Running make install...")
-    subprocess.run(['sudo', 'make', 'install'], check=True)
+
+def main():
+    src_directory = Path(__file__).resolve().parent
+    build_directory = src_directory / "tmp"
+    build_directory.mkdir(exist_ok=True)
+
+    # The script is commonly run as `sudo python3 install.py`; avoid nesting sudo.
+    use_sudo = os.geteuid() != 0
+    install_command = ["cmake", "--install", "."]
+    if use_sudo:
+        install_command.insert(0, "sudo")
+
+    run_command(["cmake", ".."], build_directory)
+    run_command(["cmake", "--build", "."], build_directory)
+    run_command(install_command, build_directory)
 
     print("Installation completed successfully.")
-except subprocess.CalledProcessError as e:
-    print(f"An error occurred during installation: {e}")
-except OSError as e:
-    print(f"An error occurred while creating or changing directory: {e}")    
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except subprocess.CalledProcessError as err:
+        print(f"An error occurred during installation: {err}", file=sys.stderr)
+        sys.exit(err.returncode)
+    except OSError as err:
+        print(f"An error occurred while preparing installation: {err}", file=sys.stderr)
+        sys.exit(1)
