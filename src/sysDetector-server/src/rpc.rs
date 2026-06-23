@@ -50,8 +50,8 @@ pub enum RpcRetCode {
 impl RpcRetCode {
     pub fn get_code(&self) -> i32 {
         match self {
-            Self::Success => -1,
-            Self::Failed => 0,
+            Self::Success => 0,
+            Self::Failed => -1,
         }
     }
 }
