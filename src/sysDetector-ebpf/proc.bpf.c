@@ -27,7 +27,7 @@ struct {
 } proc_events SEC(".maps");
 
 struct exec_args {
-    char argv[ARGV_MAX_LEN];
+    char argv[ARGV_MAX_ARGS][ARGV_ARG_LEN];
 };
 
 struct {
@@ -43,24 +43,6 @@ struct {
     __uint(value_size, PERF_MAX_STACK_DEPTH * sizeof(u64));
     __uint(max_entries, 1024);
 } stack_traces SEC(".maps");
-
-static void append_exec_arg(struct exec_args *args, const char *argp, __u32 *offset)
-{
-    if (!argp || *offset >= ARGV_MAX_LEN - 1) {
-        return;
-    }
-
-    if (*offset > 0) {
-        args->argv[*offset] = ' ';
-        (*offset)++;
-    }
-
-    long ret = bpf_probe_read_user_str(args->argv + *offset,
-            ARGV_MAX_LEN - *offset, argp);
-    if (ret > 0) {
-        *offset += ret - 1;
-    }
-}
 
 static void get_exec_info(struct trace_event_raw_sched_process_exec *ctx,
                          struct proc_event *e)
@@ -117,13 +99,14 @@ int handle_execve(struct trace_event_raw_sys_enter *ctx)
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
     const char **argv = (const char **)ctx->args[1];
     struct exec_args args = {};
-    __u32 offset = 0;
 
 #pragma unroll
     for (int i = 0; i < ARGV_MAX_ARGS; i++) {
         const char *argp = NULL;
         bpf_probe_read_user(&argp, sizeof(argp), &argv[i]);
-        append_exec_arg(&args, argp, &offset);
+        if (argp) {
+            bpf_probe_read_user_str(args.argv[i], sizeof(args.argv[i]), argp);
+        }
     }
 
     bpf_map_update_elem(&exec_args_cache, &pid, &args, BPF_ANY);

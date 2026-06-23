@@ -459,6 +459,32 @@ static struct tracked_process *alloc_tracked_process_slot(void) {
     return &tracked_procs[oldest_idx];
 }
 
+static void join_event_argv(const struct proc_event *e, char *buf, size_t buf_len) {
+    size_t offset = 0;
+
+    if (!buf || buf_len == 0) {
+        return;
+    }
+    buf[0] = '\0';
+
+    for (int i = 0; i < ARGV_MAX_ARGS; i++) {
+        if (e->argv[i][0] == '\0') {
+            continue;
+        }
+
+        int written = snprintf(buf + offset, buf_len - offset, "%s%s",
+                offset > 0 ? " " : "", e->argv[i]);
+        if (written < 0) {
+            return;
+        }
+        if ((size_t)written >= buf_len - offset) {
+            buf[buf_len - 1] = '\0';
+            return;
+        }
+        offset += (size_t)written;
+    }
+}
+
 static bool contains_any(const char *value, const char * const patterns[], size_t count) {
     if (!value || value[0] == '\0') {
         return false;
@@ -472,7 +498,7 @@ static bool contains_any(const char *value, const char * const patterns[], size_
     return false;
 }
 
-static void detect_suspicious_exec(const struct proc_event *e) {
+static void detect_suspicious_exec(const struct proc_event *e, const char *argv) {
     static const char * const shell_interpreters[] = {
         "bash -c", "sh -c", "/bash -c", "/sh -c"
     };
@@ -483,27 +509,27 @@ static void detect_suspicious_exec(const struct proc_event *e) {
         "python -c", "python3 -c", "perl -e", "ruby -e", "php -r"
     };
 
-    if (contains_any(e->argv, shell_interpreters, sizeof(shell_interpreters) / sizeof(shell_interpreters[0]))) {
+    if (contains_any(argv, shell_interpreters, sizeof(shell_interpreters) / sizeof(shell_interpreters[0]))) {
         WRITE_LOG("ANOMALY suspicious shell command PID:%u COMM:%-16s ARGV:%s",
-                e->pid, e->comm, e->argv);
+                e->pid, e->comm, argv);
     }
 
-    bool has_downloader = strstr(e->argv, "curl ") || strstr(e->argv, "wget ");
-    bool has_pipe_shell = strstr(e->argv, "| sh") || strstr(e->argv, "|sh") ||
-            strstr(e->argv, "| bash") || strstr(e->argv, "|bash");
+    bool has_downloader = strstr(argv, "curl ") || strstr(argv, "wget ");
+    bool has_pipe_shell = strstr(argv, "| sh") || strstr(argv, "|sh") ||
+            strstr(argv, "| bash") || strstr(argv, "|bash");
     if (has_downloader && has_pipe_shell) {
         WRITE_LOG("ANOMALY download-to-shell PID:%u COMM:%-16s ARGV:%s",
-                e->pid, e->comm, e->argv);
+                e->pid, e->comm, argv);
     }
 
-    if (contains_any(e->argv, reverse_shell_flags, sizeof(reverse_shell_flags) / sizeof(reverse_shell_flags[0]))) {
+    if (contains_any(argv, reverse_shell_flags, sizeof(reverse_shell_flags) / sizeof(reverse_shell_flags[0]))) {
         WRITE_LOG("ANOMALY possible reverse shell PID:%u COMM:%-16s ARGV:%s",
-                e->pid, e->comm, e->argv);
+                e->pid, e->comm, argv);
     }
 
-    if (contains_any(e->argv, inline_interpreters, sizeof(inline_interpreters) / sizeof(inline_interpreters[0]))) {
+    if (contains_any(argv, inline_interpreters, sizeof(inline_interpreters) / sizeof(inline_interpreters[0]))) {
         WRITE_LOG("ANOMALY inline interpreter PID:%u COMM:%-16s ARGV:%s",
-                e->pid, e->comm, e->argv);
+                e->pid, e->comm, argv);
     }
 }
 
@@ -515,16 +541,19 @@ static void track_proc_exec(struct proc_event *e) {
         proc = alloc_tracked_process_slot();
     }
 
+    char argv[ARGV_MAX_LEN];
+    join_event_argv(e, argv, sizeof(argv));
+
     proc->pid = e->pid;
     proc->ppid = e->ppid;
     snprintf(proc->comm, sizeof(proc->comm), "%s", e->comm);
     snprintf(proc->filename, sizeof(proc->filename), "%s", e->filename);
-    snprintf(proc->argv, sizeof(proc->argv), "%s", e->argv);
+    snprintf(proc->argv, sizeof(proc->argv), "%s", argv);
     proc->first_seen = now;
     proc->last_seen = now;
     proc->active = true;
 
-    detect_suspicious_exec(e);
+    detect_suspicious_exec(e, argv);
 }
 
 static struct short_lived_counter *find_short_lived_counter(const char *comm) {
@@ -600,9 +629,12 @@ static void track_proc_exit(struct proc_event *e) {
 
 static void proc_event_exec(struct proc_event *e)
 {
+    char argv[ARGV_MAX_LEN];
+    join_event_argv(e, argv, sizeof(argv));
+
     track_proc_exec(e);
     WRITE_LOG("EXEC PID:%d PPID:%d COMM:%-16s FILE:%s ARGV:%s STACK_ID:0x%x",
-            e->pid, e->ppid, e->comm, e->filename, e->argv, e->stack_id);
+            e->pid, e->ppid, e->comm, e->filename, argv, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)

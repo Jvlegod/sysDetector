@@ -21,8 +21,9 @@
 
 #define TASK_NAME_MAX 256
 #define TASK_COMM_LEN 16
-#define ARGV_MAX_LEN 256
 #define ARGV_MAX_ARGS 6
+#define ARGV_ARG_LEN 64
+#define ARGV_MAX_LEN 256
 
 #define PERF_MAX_STACK_DEPTH 100
 
@@ -60,7 +61,7 @@ struct proc_event {
     __u32 ppid;
     char comm[TASK_COMM_LEN];
     char filename[TASK_NAME_MAX];
-    char argv[ARGV_MAX_LEN];
+    char argv[ARGV_MAX_ARGS][ARGV_ARG_LEN];
     __u64 exit_code;
     __u32 stack_id;
 };
