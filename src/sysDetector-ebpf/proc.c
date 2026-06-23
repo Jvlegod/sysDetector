@@ -344,19 +344,64 @@ static void handle_list_printf(struct process_config *config, int id) {
             config->monitor_switch ? "On" : "Off");
 }
 
-static void handle_list_command() {
+static FILE *open_proc_out_file(void) {
     out_file = fopen(OUT_FILE_NAME, "w");
     if (!out_file) {
         WRITE_LOG("Failed to open proc output file: %s", strerror(errno));
         send_response(CMD_EBPF_ERR);
+        return NULL;
+    }
+    return out_file;
+}
+
+static void handle_config_list_command(void) {
+    FILE *file = open_proc_out_file();
+    if (!file) {
         return;
     }
 
-    fprintf(out_file, "Num\tID\tName\tUser\tRecover\tMonitor\tStop\tAlarm\tPeriod\tSwitch\t\n");
+    fprintf(file, "Num\tID\tName\tUser\tRecover\tMonitor\tStop\tAlarm\tPeriod\tSwitch\t\n");
     for (int i = 0; i < config_count; i++) {
         handle_list_printf(&configs[i], i);
     }
-    fclose(out_file);
+    fclose(file);
+}
+
+static void handle_tracked_list_command(void) {
+    FILE *file = open_proc_out_file();
+    if (!file) {
+        return;
+    }
+
+    fprintf(file, "PID\tPPID\tCOMM\tFILE\tRUNTIME\n");
+    time_t now = time(NULL);
+    for (int i = 0; i < MAX_TRACKED_PROCS; i++) {
+        if (!tracked_procs[i].active) {
+            continue;
+        }
+        long runtime = (long)difftime(now, tracked_procs[i].first_seen);
+        fprintf(file, "%u\t%u\t%s\t%s\t%lds\n", tracked_procs[i].pid,
+                tracked_procs[i].ppid, tracked_procs[i].comm,
+                tracked_procs[i].filename, runtime);
+    }
+    fclose(file);
+}
+
+static void handle_list_command(const char *scope) {
+    if (!scope || strcmp(scope, "config") == 0) {
+        handle_config_list_command();
+        send_response(CMD_SUCCESS);
+        return;
+    }
+
+    if (strcmp(scope, "tracked") == 0) {
+        handle_tracked_list_command();
+        send_response(CMD_SUCCESS);
+        return;
+    }
+
+    WRITE_LOG("Invalid proc list scope: %s", scope);
+    send_response(CMD_INVALID);
 }
 
 static void print_process_config(struct process_config *config) {
@@ -485,8 +530,7 @@ static void handle_command(const char *command[]) {
     }
 
     if (strncmp(command[0], PROC_LIST, 4) == 0) {
-        handle_list_command();
-        send_response(CMD_SUCCESS);
+        handle_list_command(command[1]);
     } else if (strncmp(command[0], PROC_START, 5) == 0) {
         if (!ebpf_running) {
             WRITE_LOG("Starting monitoring Proc");
