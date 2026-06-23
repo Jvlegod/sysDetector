@@ -16,7 +16,8 @@ ARCH ?= $(shell uname -m | sed 's/x86_64/x86/' \
 			 | sed 's/mips.*/mips/' \
 			 | sed 's/riscv64/riscv/' \
 			 | sed 's/loongarch64/loongarch/')
-VMLINUX := ../../vmlinux.h/include/$(ARCH)/vmlinux.h
+VMLINUX_DIR := ../../vmlinux.h/include/$(ARCH)
+VMLINUX := $(firstword $(wildcard $(VMLINUX_DIR)/vmlinux.h) $(wildcard $(VMLINUX_DIR)/vmlinux_*.h))
 # Use our own libbpf API headers and Linux UAPI headers distributed with
 # libbpf to avoid dependency on system-wide headers, which could be missing or
 # outdated
@@ -101,8 +102,13 @@ $(LIBBLAZESYM_OBJ): $(LIBBLAZESYM_SRC)/target/release/libblazesym_c.a | $(OUTPUT
 	$(call msg,LIB, $@)
 	$(Q)cp $(LIBBLAZESYM_SRC)/target/release/libblazesym_c.a $@
 
+$(OUTPUT)/vmlinux.h: $(VMLINUX) | $(OUTPUT)
+	$(call msg,VMLINUX,$@)
+	$(Q)test -n "$(VMLINUX)" || { echo "ERROR: no vmlinux.h found under $(VMLINUX_DIR)"; exit 1; }
+	$(Q)cp $(VMLINUX) $@
+
 # Build BPF code
-$(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(VMLINUX) | $(OUTPUT) $(BPFTOOL)
+$(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(OUTPUT)/vmlinux.h | $(OUTPUT) $(BPFTOOL)
 	$(call msg,BPF,$@)
 	$(Q)$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH)		      \
 		     $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES)		      \
