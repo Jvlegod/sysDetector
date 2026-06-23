@@ -59,16 +59,21 @@ for _ in $(seq 1 6); do
     /bin/true
     sleep 0.05
 done
+/bin/sh -c 'echo sysdetector suspicious argv selftest >/dev/null'
 /bin/sleep 0.1
 
 for _ in $(seq 1 50); do
-    if grep -q "EXEC PID:" "$LOG_FILE"         && grep -q "EXIT PID:" "$LOG_FILE"         && grep -q "ANOMALY short-lived process" "$LOG_FILE"; then
-        echo "PASS: proc runtime logs eBPF events and short-lived anomalies"
+    if grep -q "EXEC PID:" "$LOG_FILE" \
+        && grep -q "EXIT PID:" "$LOG_FILE" \
+        && grep -q "ARGV:" "$LOG_FILE" \
+        && grep -q "ANOMALY short-lived process" "$LOG_FILE" \
+        && grep -q "ANOMALY suspicious shell command" "$LOG_FILE"; then
+        echo "PASS: proc runtime logs eBPF events, argv, and anomalies"
         exit 0
     fi
     sleep 0.1
 done
 
-echo "FAIL: proc runtime did not log expected eBPF events/anomalies" >&2
+echo "FAIL: proc runtime did not log expected eBPF events/argv/anomalies" >&2
 tail -50 "$LOG_FILE" >&2
 exit 1
