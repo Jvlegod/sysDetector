@@ -57,6 +57,21 @@ static mqd_t cmd_mq;
 static FILE *log_file;
 static FILE *out_file;
 
+#define MAX_TRACKED_PROCS 4096
+#define SHORT_LIVED_PROC_SECONDS 2
+
+struct tracked_process {
+    __u32 pid;
+    __u32 ppid;
+    char comm[TASK_COMM_LEN];
+    char filename[TASK_NAME_MAX];
+    time_t first_seen;
+    time_t last_seen;
+    bool active;
+};
+
+static struct tracked_process tracked_procs[MAX_TRACKED_PROCS];
+
 #define WRITE_LOG(msg, ...) \
     do { \
         time_t rawtime; \
@@ -361,8 +376,74 @@ static void sig_handler(int sig) {
     ebpf_exiting = true;
 }
 
+static struct tracked_process *find_tracked_process(__u32 pid) {
+    for (int i = 0; i < MAX_TRACKED_PROCS; i++) {
+        if (tracked_procs[i].active && tracked_procs[i].pid == pid) {
+            return &tracked_procs[i];
+        }
+    }
+    return NULL;
+}
+
+static struct tracked_process *alloc_tracked_process_slot(void) {
+    int oldest_idx = 0;
+
+    for (int i = 0; i < MAX_TRACKED_PROCS; i++) {
+        if (!tracked_procs[i].active) {
+            return &tracked_procs[i];
+        }
+        if (tracked_procs[i].last_seen < tracked_procs[oldest_idx].last_seen) {
+            oldest_idx = i;
+        }
+    }
+
+    WRITE_LOG("Dropping tracked process PID:%u COMM:%-16s to make room",
+            tracked_procs[oldest_idx].pid, tracked_procs[oldest_idx].comm);
+    return &tracked_procs[oldest_idx];
+}
+
+static void track_proc_exec(struct proc_event *e) {
+    struct tracked_process *proc = find_tracked_process(e->pid);
+    time_t now = time(NULL);
+
+    if (!proc) {
+        proc = alloc_tracked_process_slot();
+    }
+
+    proc->pid = e->pid;
+    proc->ppid = e->ppid;
+    snprintf(proc->comm, sizeof(proc->comm), "%s", e->comm);
+    snprintf(proc->filename, sizeof(proc->filename), "%s", e->filename);
+    proc->first_seen = now;
+    proc->last_seen = now;
+    proc->active = true;
+}
+
+static void track_proc_exit(struct proc_event *e) {
+    struct tracked_process *proc = find_tracked_process(e->pid);
+    time_t now = time(NULL);
+
+    if (!proc) {
+        WRITE_LOG("EXIT PID:%d COMM:%-16s without matching exec event", e->pid, e->comm);
+        return;
+    }
+
+    proc->last_seen = now;
+    long runtime = (long)difftime(proc->last_seen, proc->first_seen);
+    WRITE_LOG("PROC PID:%u COMM:%-16s FILE:%s runtime:%lds", proc->pid,
+            proc->comm, proc->filename, runtime);
+
+    if (runtime <= SHORT_LIVED_PROC_SECONDS) {
+        WRITE_LOG("ANOMALY short-lived process PID:%u COMM:%-16s runtime:%lds",
+                proc->pid, proc->comm, runtime);
+    }
+
+    proc->active = false;
+}
+
 static void proc_event_exec(struct proc_event *e)
 {
+    track_proc_exec(e);
     WRITE_LOG("EXEC PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->filename, e->stack_id);
 }
@@ -371,6 +452,7 @@ static void proc_event_exit(struct proc_event *e)
 {
     WRITE_LOG("EXIT PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->stack_id);
+    track_proc_exit(e);
 }
 
 // ebpf interface
