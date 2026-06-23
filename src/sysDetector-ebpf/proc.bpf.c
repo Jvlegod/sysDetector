@@ -26,6 +26,17 @@ struct {
     __uint(max_entries, 256 * sizeof(struct proc_event));
 } proc_events SEC(".maps");
 
+struct exec_args {
+    char argv[ARGV_MAX_LEN];
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 4096);
+    __type(key, __u32);
+    __type(value, struct exec_args);
+} exec_args_cache SEC(".maps");
+
 struct {
     __uint(type, BPF_MAP_TYPE_STACK_TRACE);
     __uint(key_size, sizeof(u32));
@@ -33,13 +44,32 @@ struct {
     __uint(max_entries, 1024);
 } stack_traces SEC(".maps");
 
+static void append_exec_arg(struct exec_args *args, const char *argp, __u32 *offset)
+{
+    if (!argp || *offset >= ARGV_MAX_LEN - 1) {
+        return;
+    }
+
+    if (*offset > 0) {
+        args->argv[*offset] = ' ';
+        (*offset)++;
+    }
+
+    long ret = bpf_probe_read_user_str(args->argv + *offset,
+            ARGV_MAX_LEN - *offset, argp);
+    if (ret > 0) {
+        *offset += ret - 1;
+    }
+}
+
 static void get_exec_info(struct trace_event_raw_sched_process_exec *ctx,
                          struct proc_event *e)
 {
     struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
 
     e->type = EVENT_EXEC;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
+    e->pid = pid;
     e->ppid = BPF_CORE_READ(task, real_parent, tgid);
     bpf_get_current_comm(e->comm, sizeof(e->comm));
 
@@ -52,6 +82,13 @@ static void get_exec_info(struct trace_event_raw_sched_process_exec *ctx,
     if (ret < 0 || ret > filename_len) {
         __builtin_memset(e->filename, 0, sizeof(e->filename));
         bpf_printk("Filename read error: %d", ret);
+    }
+
+    __builtin_memset(e->argv, 0, sizeof(e->argv));
+    struct exec_args *args = bpf_map_lookup_elem(&exec_args_cache, &pid);
+    if (args) {
+        __builtin_memcpy(e->argv, args->argv, sizeof(e->argv));
+        bpf_map_delete_elem(&exec_args_cache, &pid);
     }
 
     e->stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
@@ -69,8 +106,28 @@ static void get_exit_info(struct trace_event_raw_sched_process_exit *ctx,
     bpf_get_current_comm(e->comm, sizeof(e->comm));
 
     __builtin_memset(e->filename, 0, sizeof(e->filename));
+    __builtin_memset(e->argv, 0, sizeof(e->argv));
 
     e->stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
+}
+
+SEC("tp/syscalls/sys_enter_execve")
+int handle_execve(struct trace_event_raw_sys_enter *ctx)
+{
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    const char **argv = (const char **)ctx->args[1];
+    struct exec_args args = {};
+    __u32 offset = 0;
+
+#pragma unroll
+    for (int i = 0; i < ARGV_MAX_ARGS; i++) {
+        const char *argp = NULL;
+        bpf_probe_read_user(&argp, sizeof(argp), &argv[i]);
+        append_exec_arg(&args, argp, &offset);
+    }
+
+    bpf_map_update_elem(&exec_args_cache, &pid, &args, BPF_ANY);
+    return 0;
 }
 
 SEC("tp/sched/sched_process_exec")

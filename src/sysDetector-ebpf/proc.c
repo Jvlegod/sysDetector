@@ -67,6 +67,7 @@ struct tracked_process {
     __u32 ppid;
     char comm[TASK_COMM_LEN];
     char filename[TASK_NAME_MAX];
+    char argv[ARGV_MAX_LEN];
     time_t first_seen;
     time_t last_seen;
     bool active;
@@ -383,16 +384,16 @@ static void handle_tracked_list_command(void) {
         return;
     }
 
-    fprintf(file, "PID\tPPID\tCOMM\tFILE\tRUNTIME\n");
+    fprintf(file, "PID\tPPID\tCOMM\tFILE\tRUNTIME\tARGV\n");
     time_t now = time(NULL);
     for (int i = 0; i < MAX_TRACKED_PROCS; i++) {
         if (!tracked_procs[i].active) {
             continue;
         }
         long runtime = (long)difftime(now, tracked_procs[i].first_seen);
-        fprintf(file, "%u\t%u\t%s\t%s\t%lds\n", tracked_procs[i].pid,
+        fprintf(file, "%u\t%u\t%s\t%s\t%lds\t%s\n", tracked_procs[i].pid,
                 tracked_procs[i].ppid, tracked_procs[i].comm,
-                tracked_procs[i].filename, runtime);
+                tracked_procs[i].filename, runtime, tracked_procs[i].argv);
     }
     fclose(file);
 }
@@ -458,6 +459,54 @@ static struct tracked_process *alloc_tracked_process_slot(void) {
     return &tracked_procs[oldest_idx];
 }
 
+static bool contains_any(const char *value, const char * const patterns[], size_t count) {
+    if (!value || value[0] == '\0') {
+        return false;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        if (strstr(value, patterns[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void detect_suspicious_exec(const struct proc_event *e) {
+    static const char * const shell_interpreters[] = {
+        "bash -c", "sh -c", "/bash -c", "/sh -c"
+    };
+    static const char * const reverse_shell_flags[] = {
+        "nc -e", "ncat -e", "netcat -e", "/dev/tcp/"
+    };
+    static const char * const inline_interpreters[] = {
+        "python -c", "python3 -c", "perl -e", "ruby -e", "php -r"
+    };
+
+    if (contains_any(e->argv, shell_interpreters, sizeof(shell_interpreters) / sizeof(shell_interpreters[0]))) {
+        WRITE_LOG("ANOMALY suspicious shell command PID:%u COMM:%-16s ARGV:%s",
+                e->pid, e->comm, e->argv);
+    }
+
+    bool has_downloader = strstr(e->argv, "curl ") || strstr(e->argv, "wget ");
+    bool has_pipe_shell = strstr(e->argv, "| sh") || strstr(e->argv, "|sh") ||
+            strstr(e->argv, "| bash") || strstr(e->argv, "|bash");
+    if (has_downloader && has_pipe_shell) {
+        WRITE_LOG("ANOMALY download-to-shell PID:%u COMM:%-16s ARGV:%s",
+                e->pid, e->comm, e->argv);
+    }
+
+    if (contains_any(e->argv, reverse_shell_flags, sizeof(reverse_shell_flags) / sizeof(reverse_shell_flags[0]))) {
+        WRITE_LOG("ANOMALY possible reverse shell PID:%u COMM:%-16s ARGV:%s",
+                e->pid, e->comm, e->argv);
+    }
+
+    if (contains_any(e->argv, inline_interpreters, sizeof(inline_interpreters) / sizeof(inline_interpreters[0]))) {
+        WRITE_LOG("ANOMALY inline interpreter PID:%u COMM:%-16s ARGV:%s",
+                e->pid, e->comm, e->argv);
+    }
+}
+
 static void track_proc_exec(struct proc_event *e) {
     struct tracked_process *proc = find_tracked_process(e->pid);
     time_t now = time(NULL);
@@ -470,9 +519,12 @@ static void track_proc_exec(struct proc_event *e) {
     proc->ppid = e->ppid;
     snprintf(proc->comm, sizeof(proc->comm), "%s", e->comm);
     snprintf(proc->filename, sizeof(proc->filename), "%s", e->filename);
+    snprintf(proc->argv, sizeof(proc->argv), "%s", e->argv);
     proc->first_seen = now;
     proc->last_seen = now;
     proc->active = true;
+
+    detect_suspicious_exec(e);
 }
 
 static struct short_lived_counter *find_short_lived_counter(const char *comm) {
@@ -536,8 +588,8 @@ static void track_proc_exit(struct proc_event *e) {
 
     proc->last_seen = now;
     long runtime = (long)difftime(proc->last_seen, proc->first_seen);
-    WRITE_LOG("PROC PID:%u COMM:%-16s FILE:%s runtime:%lds", proc->pid,
-            proc->comm, proc->filename, runtime);
+    WRITE_LOG("PROC PID:%u COMM:%-16s FILE:%s ARGV:%s runtime:%lds", proc->pid,
+            proc->comm, proc->filename, proc->argv, runtime);
 
     if (runtime <= SHORT_LIVED_PROC_SECONDS) {
         record_short_lived_process(proc, runtime, now);
@@ -549,8 +601,8 @@ static void track_proc_exit(struct proc_event *e) {
 static void proc_event_exec(struct proc_event *e)
 {
     track_proc_exec(e);
-    WRITE_LOG("EXEC PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x",
-            e->pid, e->ppid, e->comm, e->filename, e->stack_id);
+    WRITE_LOG("EXEC PID:%d PPID:%d COMM:%-16s FILE:%s ARGV:%s STACK_ID:0x%x",
+            e->pid, e->ppid, e->comm, e->filename, e->argv, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)
