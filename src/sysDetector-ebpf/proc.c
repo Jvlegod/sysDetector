@@ -307,11 +307,11 @@ static int proc_parse_config() {
     return 0;
 }
 
-static void handle_proc_status_command(const char *config_id_str, bool status) {
+static bool handle_proc_status_command(const char *config_id_str, bool status) {
     if (!config_id_str) {
         WRITE_LOG("Missing config ID for proc %s command", status ? "start" : "stop");
         send_response(CMD_INVALID);
-        return;
+        return false;
     }
 
     char *endptr = NULL;
@@ -320,7 +320,7 @@ static void handle_proc_status_command(const char *config_id_str, bool status) {
     if (errno != 0 || endptr == config_id_str || *endptr != '\0') {
         WRITE_LOG("Invalid config ID: %s", config_id_str);
         send_response(CMD_INVALID);
-        return;
+        return false;
     }
     for (int i = 0; i < config_count; i++) {
         if (configs[i].config_id == config_id) {
@@ -328,11 +328,12 @@ static void handle_proc_status_command(const char *config_id_str, bool status) {
             configs[i].last_monitor_time = time(NULL);
             WRITE_LOG("Started monitoring for config ID: %lu", (unsigned long)config_id);
             send_response(CMD_SUCCESS);
-            return;
+            return true;
         }
     }
     WRITE_LOG("Config ID not found: %s", config_id_str);
     send_response(CMD_INVALID);
+    return false;
 }
 
 static void handle_list_printf(struct process_config *config, int id) {
@@ -490,8 +491,9 @@ static void handle_command(const char *command[]) {
         if (!ebpf_running) {
             WRITE_LOG("Starting monitoring Proc");
             // TODO: Here we need to handle operations that pass in multiple parameters
-            handle_proc_status_command(command[1], true);
-            ebpf_running = true;
+            if (handle_proc_status_command(command[1], true)) {
+                ebpf_running = true;
+            }
         } else {
             WRITE_LOG("eBPF service is already running");
             send_response(CMD_EBPF_ERR);
@@ -499,8 +501,9 @@ static void handle_command(const char *command[]) {
     } else if (strncmp(command[0], PROC_STOP, 4) == 0) {
         if (ebpf_running) {
             WRITE_LOG("Stopping monitoring Proc");
-            handle_proc_status_command(command[1], false);
-            ebpf_running = false;
+            if (handle_proc_status_command(command[1], false)) {
+                ebpf_running = false;
+            }
         } else {
             WRITE_LOG("eBPF service is not running");
             send_response(CMD_EBPF_ERR);
