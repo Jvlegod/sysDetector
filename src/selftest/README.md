@@ -17,6 +17,14 @@ Selftests are grouped by module. Each module owns a subdirectory and exposes a
 - `proc/` - process monitoring and eBPF proc module tests
 - `fs/` - filesystem monitoring tests
 
-The current `proc` selftest is a build smoke test for the eBPF proc module. More
-runtime tests can be added as separate scripts under `proc/` and called from
-`proc/run.sh`.
+### proc tests
+
+`proc/run.sh` executes the scripts under `proc/tests/`:
+
+- `build.sh` builds the eBPF proc module and checks the `proc` binary exists.
+- `config.sh` validates proc configuration files and fixtures contain the
+  required unique keys.
+- `runtime-events.sh` is a root-gated runtime test. It starts the proc worker,
+  server, and CLI, enables a test config, triggers short-lived commands, and
+  verifies eBPF `EXEC`/`EXIT` events appear in `/var/log/sysDetector/proc.log`.
+  When not run as root, it reports `SKIP`.
