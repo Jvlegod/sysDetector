@@ -85,7 +85,7 @@ static void send_response(ResponseCode code) {
     snprintf(response, sizeof(response), "%d", code);
 
     if (mq_send(resp_mq, response, strlen(response), 0) == -1) {
-        WRITE_LOG(log_file, "mq_send response: %s", strerror(errno));
+        WRITE_LOG("mq_send response: %s", strerror(errno));
     }
 }
 
@@ -293,17 +293,30 @@ static int proc_parse_config() {
 }
 
 static void handle_proc_status_command(const char *config_id_str, bool status) {
-    ino_t config_id = strtoul(config_id_str, NULL, 10);
+    if (!config_id_str) {
+        WRITE_LOG("Missing config ID for proc %s command", status ? "start" : "stop");
+        send_response(CMD_INVALID);
+        return;
+    }
+
+    char *endptr = NULL;
+    errno = 0;
+    ino_t config_id = strtoul(config_id_str, &endptr, 10);
+    if (errno != 0 || endptr == config_id_str || *endptr != '\0') {
+        WRITE_LOG("Invalid config ID: %s", config_id_str);
+        send_response(CMD_INVALID);
+        return;
+    }
     for (int i = 0; i < config_count; i++) {
         if (configs[i].config_id == config_id) {
             configs[i].monitor_switch = status;
             configs[i].last_monitor_time = time(NULL);
-            WRITE_LOG(log_file, "Started monitoring for config ID: %lu", (unsigned long)config_id);
+            WRITE_LOG("Started monitoring for config ID: %lu", (unsigned long)config_id);
             send_response(CMD_SUCCESS);
             return;
         }
     }
-    WRITE_LOG(log_file, "Config ID not found: %s", config_id_str);
+    WRITE_LOG("Config ID not found: %s", config_id_str);
     send_response(CMD_INVALID);
 }
 
@@ -317,6 +330,12 @@ static void handle_list_printf(struct process_config *config, int id) {
 
 static void handle_list_command() {
     out_file = fopen(OUT_FILE_NAME, "w");
+    if (!out_file) {
+        WRITE_LOG("Failed to open proc output file: %s", strerror(errno));
+        send_response(CMD_EBPF_ERR);
+        return;
+    }
+
     fprintf(out_file, "Num\tID\tName\tUser\tRecover\tMonitor\tStop\tAlarm\tPeriod\tSwitch\t\n");
     for (int i = 0; i < config_count; i++) {
         handle_list_printf(&configs[i], i);
@@ -344,13 +363,13 @@ static void sig_handler(int sig) {
 
 static void proc_event_exec(struct proc_event *e)
 {
-    WRITE_LOG(log_file, "PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x", 
+    WRITE_LOG("PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x", 
             e->pid, e->ppid, e->comm, e->filename, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)
 {
-    WRITE_LOG(log_file, "PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x", 
+    WRITE_LOG("PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x", 
             e->pid, e->ppid, e->comm, e->stack_id);
 }
 
@@ -377,7 +396,7 @@ handle_ret:
 
 static void handle_command(const char *command[]) {
     if (!command) {
-        WRITE_LOG(log_file, "Invalid command format");
+        WRITE_LOG("Invalid command format");
         send_response(CMD_INVALID);
         return;
     }
@@ -387,23 +406,21 @@ static void handle_command(const char *command[]) {
         send_response(CMD_SUCCESS);
     } else if (strncmp(command[0], PROC_START, 5) == 0) {
         if (!ebpf_running) {
-            WRITE_LOG(log_file, "Starting monitoring Proc");
+            WRITE_LOG("Starting monitoring Proc");
             // TODO: Here we need to handle operations that pass in multiple parameters
             handle_proc_status_command(command[1], true);
             ebpf_running = true;
-            send_response(CMD_SUCCESS);
         } else {
-            WRITE_LOG(log_file, "eBPF service is already running");
+            WRITE_LOG("eBPF service is already running");
             send_response(CMD_EBPF_ERR);
         }
     } else if (strncmp(command[0], PROC_STOP, 4) == 0) {
         if (ebpf_running) {
-            WRITE_LOG(log_file, "Stopping monitoring Proc");
+            WRITE_LOG("Stopping monitoring Proc");
             handle_proc_status_command(command[1], false);
             ebpf_running = false;
-            send_response(CMD_SUCCESS);
         } else {
-            WRITE_LOG(log_file, "eBPF service is not running");
+            WRITE_LOG("eBPF service is not running");
             send_response(CMD_EBPF_ERR);
         }
     } else {
@@ -445,14 +462,14 @@ static int proc_init_mq() {
 
     resp_mq = mq_open(RESPONSE_QUEUE, O_WRONLY | O_CREAT, 0666, &attr);
     if (resp_mq == (mqd_t)-1) {
-        WRITE_LOG(log_file, "mq_open response: %s", strerror(errno));
+        WRITE_LOG("mq_open response: %s", strerror(errno));
         fclose(log_file);
         return EXIT_FAILURE;
     }
 
     cmd_mq = mq_open(COMMAND_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, 0666, &attr);
     if (cmd_mq == (mqd_t)-1) {
-        WRITE_LOG(log_file, "mq_open command: %s", strerror(errno));
+        WRITE_LOG("mq_open command: %s", strerror(errno));
         mq_close(resp_mq);
         fclose(log_file);
         return EXIT_FAILURE;
@@ -560,13 +577,17 @@ static int proc_split_space(char *src_buffer, char *dest_token[]) {
     return token_count;
 }
 
-static int proc_is_valid_opt(const char *opt) {
+static bool proc_is_valid_opt(const char *opt) {
+    if (!opt) {
+        return false;
+    }
+
     for (int i = 0; i < sizeof(PROC_POSSIBLE_OPT_VALUES) / sizeof(PROC_POSSIBLE_OPT_VALUES[0]); i++) {
         if (strcmp(opt, PROC_POSSIBLE_OPT_VALUES[i]) == 0) {
-            return EXIT_FAILURE;
+            return true;
         }
     }
-    return EXIT_SUCCESS;
+    return false;
 }
 int main(int argc, char **argv) {
     struct proc_bpf *skel = NULL;
@@ -595,17 +616,17 @@ int main(int argc, char **argv) {
 
     skel = proc_bpf__open();
     if (!skel || proc_bpf__load(skel) || proc_bpf__attach(skel)) {
-        WRITE_LOG(log_file, "eBPF setup failed");
+        WRITE_LOG("eBPF setup failed");
         goto cleanup;
     }
 
     rb = ring_buffer__new(bpf_map__fd(skel->maps.proc_events), handle_event, NULL, NULL);
     if (!rb) {
-        WRITE_LOG(log_file, "Failed to create ring buffer");
+        WRITE_LOG("Failed to create ring buffer");
         goto cleanup;
     }
 
-    WRITE_LOG(log_file, "eBPF monitoring started");
+    WRITE_LOG("eBPF monitoring started");
 
     if (pthread_create(&monitor_thread, NULL, monitor_thread_func, NULL) != 0) {
         perror("pthread_create");
@@ -623,15 +644,16 @@ int main(int argc, char **argv) {
             buffer[bytes_read] = '\0';
             printf("bytes: %s\n", buffer);
             proc_split_space(buffer, token);
-            if (proc_is_valid_opt(token[0])) {
-                send_response(CMD_EBPF_ERR);
+            if (!proc_is_valid_opt(token[0])) {
+                send_response(CMD_INVALID);
+                continue;
             }
             for (int i = 0; token[i]; i ++) {
                 printf("token: %s\n", token[i]);
             }
             handle_command((const char **)token);
         } else if (errno != EAGAIN) {
-            WRITE_LOG(log_file, "mq_receive failed with errno %d: %s", errno, strerror(errno));
+            WRITE_LOG("mq_receive failed with errno %d: %s", errno, strerror(errno));
         }
 
         ring_buffer__poll(rb, QUEUE_TIMEOUT);
