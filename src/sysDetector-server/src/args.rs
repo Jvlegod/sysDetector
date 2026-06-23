@@ -15,7 +15,6 @@
  * Author: Keke Ming
  * Date: 20250405
  */
-use log::{debug, LevelFilter};
 use clap::Subcommand;
 use serde::{Serialize, Deserialize};
 

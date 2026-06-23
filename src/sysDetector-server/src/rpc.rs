@@ -15,13 +15,11 @@
  * Author: Keke Ming
  * Date: 20250405
  */
-use log::debug;
 use serde_json;
 use anyhow::{Context, Result};
 use nix::mqueue::{mq_open, mq_send, mq_receive, mq_close, mq_unlink, MqAttr, MQ_OFlag, MqdT};
 use nix::sys::stat::Mode;
 use std::ffi::CStr;
-use std::time::Duration;
 use crate::args::Command;
 use lazy_static::lazy_static;
 
@@ -37,21 +35,16 @@ lazy_static! {
 }
 
 const MAX_MSG_SIZE: usize = 1024;
-// TODO: set the attr for mqueue, for example: MqAttr.
-const QUEUE_TIMEOUT: Duration = Duration::from_secs(5);
-
 #[repr(i32)]
 #[derive(Debug)]
 pub enum RpcRetCode {
     Success = 0,
-    Failed = -1,
 }
 
 impl RpcRetCode {
     pub fn get_code(&self) -> i32 {
         match self {
             Self::Success => 0,
-            Self::Failed => -1,
         }
     }
 }
@@ -153,11 +146,11 @@ impl Rpc {
                     Err(anyhow::anyhow!("Invalid PROC operation"))
                 }
             }
-            Command::FS { identifier, opt } => {
-                todo!()
+            Command::FS { .. } => {
+                Err(anyhow::anyhow!("FS operation is not implemented"))
             }
-            Command::LIST { identifier, opt } => {
-                todo!()
+            Command::LIST { .. } => {
+                Err(anyhow::anyhow!("LIST operation is not implemented"))
             }
         }
     }

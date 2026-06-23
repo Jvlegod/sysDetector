@@ -15,6 +15,8 @@
  * Author: Keke Ming
  * Date: 20250405
  */
+#![allow(non_snake_case)]
+
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
