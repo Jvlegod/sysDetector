@@ -55,17 +55,20 @@ for _ in $(seq 1 50); do
 done
 
 cargo run --manifest-path "$CLI_MANIFEST" --quiet -- proc start "$config_id"
-/bin/true
+for _ in $(seq 1 6); do
+    /bin/true
+    sleep 0.05
+done
 /bin/sleep 0.1
 
 for _ in $(seq 1 50); do
-    if grep -q "EXEC PID:" "$LOG_FILE" && grep -q "EXIT PID:" "$LOG_FILE"; then
-        echo "PASS: proc runtime logs eBPF exec and exit events"
+    if grep -q "EXEC PID:" "$LOG_FILE"         && grep -q "EXIT PID:" "$LOG_FILE"         && grep -q "ANOMALY short-lived process" "$LOG_FILE"; then
+        echo "PASS: proc runtime logs eBPF events and short-lived anomalies"
         exit 0
     fi
     sleep 0.1
 done
 
-echo "FAIL: proc runtime did not log expected eBPF exec/exit events" >&2
+echo "FAIL: proc runtime did not log expected eBPF events/anomalies" >&2
 tail -50 "$LOG_FILE" >&2
 exit 1
