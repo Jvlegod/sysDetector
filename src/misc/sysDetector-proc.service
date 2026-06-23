@@ -4,8 +4,7 @@ Requires=local-fs.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/libexec/sysDetector/proc -d
-ExecStop=/usr/bin/kill -s SIGTERM $MAINPID
+ExecStart=/usr/local/libexec/sysDetector/proc
 User=root
 Group=root
 Restart=always

@@ -832,6 +832,7 @@ static bool proc_is_valid_opt(const char *opt) {
 int main(int argc, char **argv) {
     struct proc_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
+    int exit_code = EXIT_FAILURE;
 
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
@@ -900,6 +901,7 @@ int main(int argc, char **argv) {
     }
 
     pthread_join(monitor_thread, NULL);
+    exit_code = EXIT_SUCCESS;
 
 cleanup:
     ring_buffer__free(rb);
@@ -912,5 +914,5 @@ cleanup:
     if (remove(OUT_FILE_NAME) != 0) {
         perror("Failed to remove output file");
     }
-    return EXIT_SUCCESS;
+    return exit_code;
 }    
