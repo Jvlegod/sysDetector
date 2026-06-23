@@ -59,6 +59,8 @@ static FILE *out_file;
 
 #define MAX_TRACKED_PROCS 4096
 #define SHORT_LIVED_PROC_SECONDS 2
+#define SHORT_LIVED_BURST_WINDOW_SECONDS 10
+#define SHORT_LIVED_BURST_THRESHOLD 5
 
 struct tracked_process {
     __u32 pid;
@@ -70,7 +72,15 @@ struct tracked_process {
     bool active;
 };
 
+struct short_lived_counter {
+    char comm[TASK_COMM_LEN];
+    time_t window_start;
+    int count;
+    bool active;
+};
+
 static struct tracked_process tracked_procs[MAX_TRACKED_PROCS];
+static struct short_lived_counter short_lived_counters[MAX_TRACKED_PROCS];
 
 #define WRITE_LOG(msg, ...) \
     do { \
@@ -465,6 +475,56 @@ static void track_proc_exec(struct proc_event *e) {
     proc->active = true;
 }
 
+static struct short_lived_counter *find_short_lived_counter(const char *comm) {
+    for (int i = 0; i < MAX_TRACKED_PROCS; i++) {
+        if (short_lived_counters[i].active && strcmp(short_lived_counters[i].comm, comm) == 0) {
+            return &short_lived_counters[i];
+        }
+    }
+    return NULL;
+}
+
+static struct short_lived_counter *alloc_short_lived_counter_slot(void) {
+    int oldest_idx = 0;
+
+    for (int i = 0; i < MAX_TRACKED_PROCS; i++) {
+        if (!short_lived_counters[i].active) {
+            return &short_lived_counters[i];
+        }
+        if (short_lived_counters[i].window_start < short_lived_counters[oldest_idx].window_start) {
+            oldest_idx = i;
+        }
+    }
+
+    return &short_lived_counters[oldest_idx];
+}
+
+static void record_short_lived_process(const struct tracked_process *proc, long runtime, time_t now) {
+    struct short_lived_counter *counter = find_short_lived_counter(proc->comm);
+
+    if (!counter) {
+        counter = alloc_short_lived_counter_slot();
+        memset(counter, 0, sizeof(*counter));
+        snprintf(counter->comm, sizeof(counter->comm), "%s", proc->comm);
+        counter->window_start = now;
+        counter->active = true;
+    }
+
+    if (difftime(now, counter->window_start) > SHORT_LIVED_BURST_WINDOW_SECONDS) {
+        counter->window_start = now;
+        counter->count = 0;
+    }
+
+    counter->count++;
+    WRITE_LOG("ANOMALY short-lived process PID:%u COMM:%-16s runtime:%lds",
+            proc->pid, proc->comm, runtime);
+
+    if (counter->count >= SHORT_LIVED_BURST_THRESHOLD) {
+        WRITE_LOG("ANOMALY short-lived burst COMM:%-16s count:%d window:%ds",
+                counter->comm, counter->count, SHORT_LIVED_BURST_WINDOW_SECONDS);
+    }
+}
+
 static void track_proc_exit(struct proc_event *e) {
     struct tracked_process *proc = find_tracked_process(e->pid);
     time_t now = time(NULL);
@@ -480,8 +540,7 @@ static void track_proc_exit(struct proc_event *e) {
             proc->comm, proc->filename, runtime);
 
     if (runtime <= SHORT_LIVED_PROC_SECONDS) {
-        WRITE_LOG("ANOMALY short-lived process PID:%u COMM:%-16s runtime:%lds",
-                proc->pid, proc->comm, runtime);
+        record_short_lived_process(proc, runtime, now);
     }
 
     proc->active = false;
