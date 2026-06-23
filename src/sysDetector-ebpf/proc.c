@@ -363,13 +363,13 @@ static void sig_handler(int sig) {
 
 static void proc_event_exec(struct proc_event *e)
 {
-    WRITE_LOG("PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x", 
+    WRITE_LOG("EXEC PID:%d PPID:%d COMM:%-16s FILE:%s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->filename, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)
 {
-    WRITE_LOG("PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x", 
+    WRITE_LOG("EXIT PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->stack_id);
 }
 
@@ -380,10 +380,10 @@ static int handle_event(void *ctx, void *data, size_t sz) {
         switch (e->type)
         {
         case EVENT_EXEC:
-            // proc_event_exec(e);
+            proc_event_exec(e);
             goto handle_ret;
         case EVENT_EXIT:
-            // proc_event_exit(e);
+            proc_event_exit(e);
             goto handle_ret;
         default:
             return -1;
