@@ -47,6 +47,15 @@ SERVICES_TO_STOP = [
     "sysDetector-proc.service"
 ]
 
+# Local source build artifacts created during install.py/cmake builds
+SRC_BUILD_PATHS = [
+    Path(__file__).resolve().parent / "tmp",
+    Path(__file__).resolve().parent / "sysDetector-ebpf" / ".output",
+    Path(__file__).resolve().parent / "sysDetector-ebpf" / "proc",
+    Path(__file__).resolve().parent / "sysDetector-server" / "target",
+    Path(__file__).resolve().parent / "sysDetector-cli" / "target"
+]
+
 
 def check_root():
     """Verify script is run with root privileges"""
@@ -105,6 +114,28 @@ def clean_empty_directories():
     return cleaned_dirs
 
 
+def clean_src_directories():
+    """Remove local source build artifacts created during installation"""
+    cleaned_items = 0
+
+    for path in SRC_BUILD_PATHS:
+        try:
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+                print(f"Removed source build file: {path}")
+                cleaned_items += 1
+            elif path.is_dir():
+                shutil.rmtree(path)
+                print(f"Removed source build directory: {path}")
+                cleaned_items += 1
+            else:
+                print(f"Source build path not found: {path} (skipping)")
+        except Exception as e:
+            print(f"Error cleaning source build path {path}: {str(e)}")
+
+    return cleaned_items
+
+
 def main():
     check_root()
 
@@ -115,10 +146,12 @@ def main():
 
     removed_count = remove_installation_items()
     cleaned_count = clean_empty_directories()
+    src_cleaned_count = clean_src_directories()
 
     print("\nUninstallation summary:")
     print(f"• Removed {removed_count} files directories")
     print(f"• Cleaned {cleaned_count} empty directories")
+    print(f"• Cleaned {src_cleaned_count} source build items")
 
     if removed_count < len(INSTALL_PATHS):
         print("\nWarning: Not all components were successfully removed")
