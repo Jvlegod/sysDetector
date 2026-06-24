@@ -54,6 +54,10 @@ async fn handle_connection(args: &Arguments) -> Result<()> {
         print!("{}", String::from_utf8_lossy(&body));
     }
 
+    if response_code != 0 {
+        return Err(anyhow::anyhow!("server returned error code {}", response_code));
+    }
+
     debug!("Received response: {}", response_code);
 
     match &args.subcommand {

@@ -43,7 +43,13 @@ async fn handle_connection(mut stream: UnixStream, rpc: Arc<Mutex<rpc::Rpc>>) ->
 
     let response = {
         let rpc_lock = rpc.lock().unwrap();
-        rpc_lock.handle_command(&buf)?
+        match rpc_lock.handle_command(&buf) {
+            Ok(response) => response,
+            Err(err) => rpc::RpcResponse {
+                code: 1,
+                body: format!("Error: {err:#}\n"),
+            },
+        }
     };
 
     stream.write_all(&response.code.to_be_bytes()).await?;
