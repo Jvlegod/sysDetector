@@ -21,7 +21,6 @@ use anyhow::Result;
 use log::debug;
 use serde_json;
 use tokio::{
-    fs,
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
 };
@@ -30,21 +29,7 @@ mod args;
 use self::args::Arguments;
 
 const SOCKET_FILE_NAME: &str = "/var/run/sysDetector.sock";
-const LOG_FILE_PATH: &str = "/var/log/sysDetector/out.log";
 
-async fn read_log_file() -> Result<String> {
-    if let Err(_) = fs::metadata(LOG_FILE_PATH).await {
-        return Err(anyhow::anyhow!(
-            "Log file not found at path: {}",
-            LOG_FILE_PATH
-        ));
-    }
-
-    let mut file = fs::File::open(LOG_FILE_PATH).await?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents).await?;
-    Ok(contents)
-}
 async fn handle_connection(args: &Arguments) -> Result<()> {
     let socket_path = SOCKET_FILE_NAME;
     let mut stream = UnixStream::connect(socket_path).await?;
@@ -60,6 +45,15 @@ async fn handle_connection(args: &Arguments) -> Result<()> {
     stream.read_exact(&mut buf).await?;
     let response_code = i32::from_be_bytes(buf);
 
+    let mut body_len_buf = [0; 4];
+    stream.read_exact(&mut body_len_buf).await?;
+    let body_len = u32::from_be_bytes(body_len_buf) as usize;
+    let mut body = vec![0; body_len];
+    if body_len > 0 {
+        stream.read_exact(&mut body).await?;
+        print!("{}", String::from_utf8_lossy(&body));
+    }
+
     debug!("Received response: {}", response_code);
 
     match &args.subcommand {
@@ -68,16 +62,6 @@ async fn handle_connection(args: &Arguments) -> Result<()> {
                 "Received PROC command with opt: {}, identifier: {:?}",
                 opt, identifier
             );
-            if opt == args::PROC_POSSIBLE_OPT_VALUES[2] {
-                match read_log_file().await {
-                    Ok(content) => {
-                        println!("{}", content);
-                    }
-                    Err(e) => {
-                        debug!("Failed to read log file: {}", e);
-                    }
-                }
-            }
         }
         args::Command::FS { opt, identifier } => {
             debug!(

@@ -46,7 +46,10 @@ async fn handle_connection(mut stream: UnixStream, rpc: Arc<Mutex<rpc::Rpc>>) ->
         rpc_lock.handle_command(&buf)?
     };
 
-    stream.write_all(&response.to_be_bytes()).await?;
+    stream.write_all(&response.code.to_be_bytes()).await?;
+    let body = response.body.as_bytes();
+    stream.write_all(&(body.len() as u32).to_be_bytes()).await?;
+    stream.write_all(body).await?;
 
     Ok(())
 }

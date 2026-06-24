@@ -20,6 +20,7 @@ use anyhow::{Context, Result};
 use nix::mqueue::{mq_open, mq_send, mq_receive, mq_close, MqAttr, MQ_OFlag, MqdT};
 use nix::sys::stat::Mode;
 use std::ffi::CStr;
+use std::fs;
 use crate::args::Command;
 use lazy_static::lazy_static;
 
@@ -41,18 +42,11 @@ lazy_static! {
 }
 
 const MAX_MSG_SIZE: usize = 1024;
-#[repr(i32)]
-#[derive(Debug)]
-pub enum RpcRetCode {
-    Success = 0,
-}
+const OUT_FILE_NAME: &str = "/var/log/sysDetector/out.log";
 
-impl RpcRetCode {
-    pub fn get_code(&self) -> i32 {
-        match self {
-            Self::Success => 0,
-        }
-    }
+pub struct RpcResponse {
+    pub code: i32,
+    pub body: String,
 }
 
 pub struct Rpc;
@@ -62,7 +56,7 @@ impl Rpc {
         Ok(Self)
     }
 
-    pub fn handle_command(&self, command: &[u8]) -> Result<i32> {
+    pub fn handle_command(&self, command: &[u8]) -> Result<RpcResponse> {
         let recv_command: Command = serde_json::from_slice(command)
         .context("Failed to deserialize command")?;
         println!("Received command: {:?}", recv_command);
@@ -75,10 +69,18 @@ impl Rpc {
         
         let recv_str = Self::receive_response_from_fd(response_fd)?;
         println!("Received response: {}", recv_str);
-        /* TODO:
-         * Here now always success, but need to return related value
-         */
-        Ok(RpcRetCode::Success.get_code())
+        let code = recv_str.trim().parse::<i32>().unwrap_or(1);
+        let body = if Self::is_list_command(&recv_command) {
+            fs::read_to_string(OUT_FILE_NAME).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        Ok(RpcResponse { code, body })
+    }
+
+    fn is_list_command(cmd: &Command) -> bool {
+        matches!(cmd, Command::PROC { opt, .. } | Command::FS { opt, .. } if opt == "list")
     }
 
     fn queues_for_command(cmd: &Command) -> (&'static CStr, &'static CStr) {
