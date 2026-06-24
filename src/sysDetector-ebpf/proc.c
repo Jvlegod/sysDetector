@@ -661,6 +661,29 @@ static bool track_proc_exit(struct proc_event *e) {
     return true;
 }
 
+static bool track_proc_fork(struct proc_event *e) {
+    struct tracked_process *parent = find_tracked_process(e->ppid);
+    if (!parent) {
+        return false;
+    }
+
+    struct tracked_process *child = find_tracked_process(e->pid);
+    if (!child) {
+        child = alloc_tracked_process_slot();
+    }
+
+    *child = *parent;
+    child->pid = e->pid;
+    child->ppid = e->ppid;
+    snprintf(child->comm, sizeof(child->comm), "%s", e->comm);
+    child->last_seen = time(NULL);
+    child->active = true;
+
+    WRITE_LOG("FORK PID:%u PPID:%u COMM:%-16s PARENT_COMM:%-16s STACK_ID:0x%x",
+            e->pid, e->ppid, e->comm, parent->comm, e->stack_id);
+    return true;
+}
+
 static void proc_event_exec(struct proc_event *e)
 {
     if (!is_enabled_configured_process(e)) {
@@ -687,6 +710,11 @@ static void proc_event_exit(struct proc_event *e)
             e->pid, e->ppid, e->comm, e->stack_id);
 }
 
+static void proc_event_fork(struct proc_event *e)
+{
+    track_proc_fork(e);
+}
+
 // ebpf interface
 static int handle_event(void *ctx, void *data, size_t sz) {
     if (ebpf_running) {
@@ -698,6 +726,9 @@ static int handle_event(void *ctx, void *data, size_t sz) {
             goto handle_ret;
         case EVENT_EXIT:
             proc_event_exit(e);
+            goto handle_ret;
+        case EVENT_FORK:
+            proc_event_fork(e);
             goto handle_ret;
         default:
             return -1;

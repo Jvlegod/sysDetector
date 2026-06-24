@@ -47,6 +47,7 @@ typedef enum {
 enum event_type {
     EVENT_EXEC,
     EVENT_EXIT,
+    EVENT_FORK,
 };
 
 struct task_parse {

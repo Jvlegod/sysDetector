@@ -93,6 +93,20 @@ static void get_exit_info(struct trace_event_raw_sched_process_exit *ctx,
     e->stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
 }
 
+static void get_fork_info(struct trace_event_raw_sched_process_fork *ctx,
+                         struct proc_event *e)
+{
+    e->type = EVENT_FORK;
+    e->pid = BPF_CORE_READ(ctx, child_pid);
+    e->ppid = BPF_CORE_READ(ctx, parent_pid);
+    bpf_probe_read_kernel_str(e->comm, sizeof(e->comm), ctx->child_comm);
+
+    __builtin_memset(e->filename, 0, sizeof(e->filename));
+    __builtin_memset(e->argv, 0, sizeof(e->argv));
+
+    e->stack_id = bpf_get_stackid(ctx, &stack_traces, BPF_F_USER_STACK);
+}
+
 SEC("tp/syscalls/sys_enter_execve")
 int handle_execve(struct trace_event_raw_sys_enter *ctx)
 {
@@ -131,6 +145,17 @@ int handle_exit(struct trace_event_raw_sched_process_exit *ctx)
     if (!e) return 0;
 
     get_exit_info(ctx, e);
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+SEC("tp/sched/sched_process_fork")
+int handle_fork(struct trace_event_raw_sched_process_fork *ctx)
+{
+    struct proc_event *e = bpf_ringbuf_reserve(&proc_events, sizeof(*e), 0);
+    if (!e) return 0;
+
+    get_fork_info(ctx, e);
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
