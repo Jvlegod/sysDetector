@@ -25,6 +25,7 @@ Selftests are grouped by module. Each module owns a subdirectory and exposes a
 - `config.sh` validates proc configuration files and fixtures contain the
   required unique keys.
 - `runtime-events.sh` is a root-gated runtime test. It starts the proc worker,
-  server, and CLI, enables a test config, triggers short-lived commands, and
-  verifies eBPF `EXEC`/`EXIT` events appear in `/var/log/sysDetector/proc.log`.
-  When not run as root, it reports `SKIP`.
+  server, and CLI, enables a test config, triggers configured and unconfigured
+  short-lived commands, and verifies only configured eBPF `EXEC`/`EXIT` events
+  appear in `/var/log/sysDetector/proc.log`. When not run as root, it reports
+  `SKIP`.

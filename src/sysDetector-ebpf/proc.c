@@ -459,6 +459,31 @@ static struct tracked_process *alloc_tracked_process_slot(void) {
     return &tracked_procs[oldest_idx];
 }
 
+static const char *path_basename(const char *path) {
+    const char *slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
+static bool is_enabled_configured_process(const struct proc_event *e) {
+    const char *filename = path_basename(e->filename);
+
+    for (int i = 0; i < config_count; i++) {
+        if (!configs[i].monitor_switch) {
+            continue;
+        }
+
+        if (strcmp(configs[i].name, e->comm) == 0 || strcmp(configs[i].name, filename) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool is_tracked_or_configured_process(const struct proc_event *e) {
+    return find_tracked_process(e->pid) || is_enabled_configured_process(e);
+}
+
 static void join_event_argv(const struct proc_event *e, char *buf, size_t buf_len) {
     size_t offset = 0;
 
@@ -629,6 +654,10 @@ static void track_proc_exit(struct proc_event *e) {
 
 static void proc_event_exec(struct proc_event *e)
 {
+    if (!is_enabled_configured_process(e)) {
+        return;
+    }
+
     char argv[ARGV_MAX_LEN];
     join_event_argv(e, argv, sizeof(argv));
 
@@ -639,6 +668,10 @@ static void proc_event_exec(struct proc_event *e)
 
 static void proc_event_exit(struct proc_event *e)
 {
+    if (!is_tracked_or_configured_process(e)) {
+        return;
+    }
+
     WRITE_LOG("EXIT PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->stack_id);
     track_proc_exit(e);
