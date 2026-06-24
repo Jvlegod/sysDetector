@@ -119,7 +119,7 @@ impl Rpc {
 
         let fd = mq_open(
             queue_name,
-            MQ_OFlag::O_CREAT | MQ_OFlag::O_WRONLY,
+            MQ_OFlag::O_WRONLY,
             Mode::S_IRUSR | Mode::S_IWUSR,
             None,
         ).context("Command send queue open failed")?;
