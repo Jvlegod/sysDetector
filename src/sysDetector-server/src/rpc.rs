@@ -17,10 +17,13 @@
  */
 use serde_json;
 use anyhow::{Context, Result};
+use nix::errno::Errno;
 use nix::mqueue::{mq_open, mq_send, mq_receive, mq_close, MqAttr, MQ_OFlag, MqdT};
 use nix::sys::stat::Mode;
 use std::ffi::CStr;
 use std::fs;
+use std::thread;
+use std::time::{Duration, Instant};
 use crate::args::Command;
 use lazy_static::lazy_static;
 
@@ -42,6 +45,7 @@ lazy_static! {
 }
 
 const MAX_MSG_SIZE: usize = 1024;
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const OUT_FILE_NAME: &str = "/var/log/sysDetector/out.log";
 
 pub struct RpcResponse {
@@ -94,7 +98,7 @@ impl Rpc {
         let attr = MqAttr::new(0, 10, MAX_MSG_SIZE as i64, 0);
         mq_open(
             queue_name,
-            MQ_OFlag::O_CREAT | MQ_OFlag::O_RDONLY,
+            MQ_OFlag::O_CREAT | MQ_OFlag::O_RDONLY | MQ_OFlag::O_NONBLOCK,
             Mode::S_IRUSR | Mode::S_IWUSR,
             Some(&attr),
         ).context("Response queue open failed")
@@ -103,12 +107,28 @@ impl Rpc {
     fn receive_response_from_fd(fd: MqdT) -> Result<String> {
         let mut buf = vec![0u8; MAX_MSG_SIZE];
         let mut prio = 0;
-        let len = mq_receive(&fd, &mut buf, &mut prio)
-            .context("Response receive failed")?;
-        mq_close(fd).ok();
+        let deadline = Instant::now() + RESPONSE_TIMEOUT;
 
-        String::from_utf8(buf[..len].to_vec())
-            .context("Invalid UTF-8 response")
+        loop {
+            match mq_receive(&fd, &mut buf, &mut prio) {
+                Ok(len) => {
+                    mq_close(fd).ok();
+                    return String::from_utf8(buf[..len].to_vec())
+                        .context("Invalid UTF-8 response");
+                }
+                Err(Errno::EAGAIN) if Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(Errno::EAGAIN) => {
+                    mq_close(fd).ok();
+                    return Err(anyhow::anyhow!("Response receive timed out"));
+                }
+                Err(err) => {
+                    mq_close(fd).ok();
+                    return Err(err).context("Response receive failed");
+                }
+            }
+        }
     }
 
     fn send_command_to(&self, command: &str, queue_name: &CStr) -> Result<()> {

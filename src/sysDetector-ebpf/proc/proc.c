@@ -52,7 +52,6 @@ const char *PROC_POSSIBLE_OPT_VALUES[] = {"start", "stop", "list"};
 static bool ebpf_exiting = false;
 static bool ebpf_running = false;
 static pthread_t monitor_thread;
-static mqd_t resp_mq;
 static mqd_t cmd_mq;
 static FILE *log_file;
 static FILE *out_file;
@@ -107,12 +106,19 @@ static struct short_lived_counter short_lived_counters[MAX_TRACKED_PROCS];
     } while(0)
 
 static void send_response(ResponseCode code) {
+    mqd_t resp_mq = mq_open(RESPONSE_QUEUE, O_WRONLY);
+    if (resp_mq == (mqd_t)-1) {
+        WRITE_LOG("mq_open response: %s", strerror(errno));
+        return;
+    }
+
     char response[16];
     snprintf(response, sizeof(response), "%d", code);
 
     if (mq_send(resp_mq, response, strlen(response), 0) == -1) {
         WRITE_LOG("mq_send response: %s", strerror(errno));
     }
+    mq_close(resp_mq);
 }
 
 static int parse_monitor_period(const char *value, void *data) {
@@ -806,17 +812,10 @@ static int proc_init_mq() {
         .mq_curmsgs = 0
     };
 
-    resp_mq = mq_open(RESPONSE_QUEUE, O_WRONLY | O_CREAT, 0666, &attr);
-    if (resp_mq == (mqd_t)-1) {
-        WRITE_LOG("mq_open response: %s", strerror(errno));
-        fclose(log_file);
-        return EXIT_FAILURE;
-    }
-
+    mq_unlink(COMMAND_QUEUE);
     cmd_mq = mq_open(COMMAND_QUEUE, O_RDONLY | O_CREAT | O_NONBLOCK, 0666, &attr);
     if (cmd_mq == (mqd_t)-1) {
         WRITE_LOG("mq_open command: %s", strerror(errno));
-        mq_close(resp_mq);
         fclose(log_file);
         return EXIT_FAILURE;
     }
@@ -1014,7 +1013,6 @@ cleanup:
     proc_bpf__destroy(skel);
     mq_close(cmd_mq);
     mq_unlink(COMMAND_QUEUE);
-    mq_close(resp_mq);
     mq_unlink(RESPONSE_QUEUE);
     fclose(log_file);
     if (remove(OUT_FILE_NAME) != 0) {
