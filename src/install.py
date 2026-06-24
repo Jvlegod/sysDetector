@@ -16,14 +16,36 @@
 # Date: 20250405
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
-def run_command(command, cwd):
+def run_command(command, cwd, env=None):
     print(f"Running: {' '.join(command)}")
-    subprocess.run(command, cwd=cwd, check=True)
+    subprocess.run(command, cwd=cwd, env=env, check=True)
+
+
+def find_clang():
+    configured_clang = os.environ.get("CLANG")
+    if configured_clang:
+        return configured_clang
+
+    for candidate in ["clang", "clang-18", "clang-17", "clang-16"]:
+        clang = shutil.which(candidate)
+        if clang:
+            return clang
+
+    return None
+
+
+def build_environment():
+    env = os.environ.copy()
+    clang = find_clang()
+    if clang:
+        env["CLANG"] = clang
+    return env
 
 
 def main():
@@ -37,9 +59,11 @@ def main():
     if use_sudo:
         install_command.insert(0, "sudo")
 
-    run_command(["cmake", ".."], build_directory)
-    run_command(["cmake", "--build", "."], build_directory)
-    run_command(install_command, build_directory)
+    build_env = build_environment()
+
+    run_command(["cmake", ".."], build_directory, env=build_env)
+    run_command(["cmake", "--build", "."], build_directory, env=build_env)
+    run_command(install_command, build_directory, env=build_env)
 
     print("Installation completed successfully.")
 

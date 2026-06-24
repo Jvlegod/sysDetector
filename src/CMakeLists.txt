@@ -97,10 +97,18 @@ install (
 )
 
 # TODO: change eBPF program from makefile to cmake
+find_program(SYSDETECTOR_BPF_CLANG
+    NAMES $ENV{CLANG} clang clang-18 clang-17 clang-16
+)
+if(NOT SYSDETECTOR_BPF_CLANG)
+    message(FATAL_ERROR "No clang compiler found for eBPF build. Install clang or set CLANG=/path/to/clang.")
+endif()
+message("-- eBPF clang: ${SYSDETECTOR_BPF_CLANG}")
+
 # compile and install eBPF program
 add_custom_target(build_sysDetector_ebpf ALL
     COMMENT "Building sysDetector-ebpf using Makefile..."
-    COMMAND $(MAKE) -C ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf
+    COMMAND $(MAKE) -C ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf CLANG=${SYSDETECTOR_BPF_CLANG}
     DEPENDS build_sysDetector_server build_sysDetector_cli
 )
 
