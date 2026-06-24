@@ -31,6 +31,7 @@ INSTALL_PATHS = [
     Path("/etc/sysDetector"),
     Path("/usr/local/lib/systemd/system/sysDetector.service"),
     Path("/usr/local/lib/systemd/system/sysDetector-proc.service"),
+    Path("/usr/local/lib/systemd/system/sysDetector-fs.service"),
     Path("/var/run/sysDetector.sock")
 ]
 
@@ -44,7 +45,8 @@ POTENTIAL_EMPTY_DIRS = [
 # service list
 SERVICES_TO_STOP = [
     "sysDetector.service",
-    "sysDetector-proc.service"
+    "sysDetector-proc.service",
+    "sysDetector-fs.service"
 ]
 
 # Local source build artifacts created during install.py/cmake builds

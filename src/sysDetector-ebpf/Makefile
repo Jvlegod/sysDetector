@@ -27,13 +27,14 @@ ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
 
 APPS = # NULL
 PROC_APP := $(OUTPUT)/proc/proc
+FS_APP := $(OUTPUT)/fs/fs
 
 CARGO ?= $(shell which cargo)
 ifeq ($(strip $(CARGO)),)
 BZS_APPS :=
 else
 BZS_APPS := $(PROC_APP)
-APPS += $(BZS_APPS)
+APPS += $(BZS_APPS) $(FS_APP)
 # Required by libblazesym
 ALL_LDFLAGS += -lrt -ldl -lpthread -lm
 endif
@@ -78,7 +79,7 @@ clean:
 	$(call msg,CLEAN)
 	$(Q)rm -rf $(OUTPUT)
 
-$(OUTPUT) $(OUTPUT)/libbpf $(BPFTOOL_OUTPUT) $(OUTPUT)/proc:
+$(OUTPUT) $(OUTPUT)/libbpf $(BPFTOOL_OUTPUT) $(OUTPUT)/proc $(OUTPUT)/fs:
 	$(call msg,MKDIR,$@)
 	$(Q)mkdir -p $@
 
@@ -135,6 +136,14 @@ $(patsubst %,$(OUTPUT)/%.o,$(APPS)): $(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wil
 $(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wildcard %.h) | $(OUTPUT)
 	$(call msg,CC,$@)
 	$(Q)$(CC) $(CFLAGS) $(INCLUDES) -c $(filter %.c,$^) -o $@
+
+$(OUTPUT)/fs/fs.o: fs/fs.c | $(OUTPUT) $(OUTPUT)/fs
+	$(call msg,CC,$@)
+	$(Q)$(CC) $(CFLAGS) -c fs/fs.c -o $@
+
+$(FS_APP): $(OUTPUT)/fs/fs.o | $(OUTPUT) $(OUTPUT)/fs
+	$(call msg,BINARY,$@)
+	$(Q)$(CC) $(CFLAGS) $^ -lrt -o $@
 
 $(patsubst %,$(OUTPUT)/%.o,$(BZS_APPS)): $(LIBBLAZESYM_OBJ)
 

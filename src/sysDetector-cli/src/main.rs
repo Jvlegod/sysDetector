@@ -81,8 +81,8 @@ async fn handle_connection(args: &Arguments) -> Result<()> {
         }
         args::Command::FS { opt, identifier } => {
             debug!(
-                "Received FS command with identifier: {}, opt: {}",
-                opt, identifier
+                "Received FS command with identifier: {:?}, opt: {}",
+                identifier, opt
             );
         }
         args::Command::LIST { opt, identifier } => {

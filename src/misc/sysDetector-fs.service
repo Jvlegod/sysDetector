@@ -1,0 +1,14 @@
+[Unit]
+Description=sysDetector FS monitoring service
+Requires=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/sysDetector/fs
+User=root
+Group=root
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

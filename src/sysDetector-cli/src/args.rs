@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 const DEFAULT_LOG_LEVEL: &str = "info";
 pub const PROC_POSSIBLE_OPT_VALUES: &[&str] = &["start", "stop", "list"];
+pub const FS_POSSIBLE_OPT_VALUES: &[&str] = &["start", "stop", "list"];
 
 #[derive(Debug, Clone, Subcommand, Serialize, Deserialize)]
 pub enum Command {
@@ -37,10 +38,10 @@ pub enum Command {
     /// Set fs op
     FS {
         /// Set fs opt
-        #[clap(required = true)]
+        #[clap(required = true, possible_values = FS_POSSIBLE_OPT_VALUES)]
         opt: String,
 
-        identifier: String,
+        identifier: Vec<String>,
     },
 
     /// Set list op
