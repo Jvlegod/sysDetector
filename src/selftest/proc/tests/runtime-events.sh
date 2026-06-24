@@ -69,7 +69,8 @@ for _ in $(seq 1 50); do
         && grep -q "ARGV:" "$LOG_FILE" \
         && grep -q "ANOMALY short-lived process" "$LOG_FILE" \
         && grep -q "ANOMALY suspicious shell command" "$LOG_FILE" \
-        && ! grep -q "COMM:true" "$LOG_FILE"; then
+        && ! grep -q "COMM:true" "$LOG_FILE" \
+        && ! grep -q "without matching exec event" "$LOG_FILE"; then
         echo "PASS: proc runtime logs configured eBPF events, argv, and anomalies"
         exit 0
     fi

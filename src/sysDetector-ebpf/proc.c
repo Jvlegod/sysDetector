@@ -480,7 +480,7 @@ static bool is_enabled_configured_process(const struct proc_event *e) {
     return false;
 }
 
-static bool is_tracked_or_configured_process(const struct proc_event *e) {
+static bool is_tracked_or_enabled_configured_process(const struct proc_event *e) {
     return find_tracked_process(e->pid) || is_enabled_configured_process(e);
 }
 
@@ -558,7 +558,11 @@ static void detect_suspicious_exec(const struct proc_event *e, const char *argv)
     }
 }
 
-static void track_proc_exec(struct proc_event *e) {
+static bool track_proc_exec(struct proc_event *e) {
+    if (!is_enabled_configured_process(e)) {
+        return false;
+    }
+
     struct tracked_process *proc = find_tracked_process(e->pid);
     time_t now = time(NULL);
 
@@ -579,6 +583,7 @@ static void track_proc_exec(struct proc_event *e) {
     proc->active = true;
 
     detect_suspicious_exec(e, argv);
+    return true;
 }
 
 static struct short_lived_counter *find_short_lived_counter(const char *comm) {
@@ -631,13 +636,16 @@ static void record_short_lived_process(const struct tracked_process *proc, long 
     }
 }
 
-static void track_proc_exit(struct proc_event *e) {
+static bool track_proc_exit(struct proc_event *e) {
+    if (!is_tracked_or_enabled_configured_process(e)) {
+        return false;
+    }
+
     struct tracked_process *proc = find_tracked_process(e->pid);
     time_t now = time(NULL);
 
     if (!proc) {
-        WRITE_LOG("EXIT PID:%d COMM:%-16s without matching exec event", e->pid, e->comm);
-        return;
+        return false;
     }
 
     proc->last_seen = now;
@@ -650,6 +658,7 @@ static void track_proc_exit(struct proc_event *e) {
     }
 
     proc->active = false;
+    return true;
 }
 
 static void proc_event_exec(struct proc_event *e)
@@ -661,20 +670,21 @@ static void proc_event_exec(struct proc_event *e)
     char argv[ARGV_MAX_LEN];
     join_event_argv(e, argv, sizeof(argv));
 
-    track_proc_exec(e);
+    if (!track_proc_exec(e)) {
+        return;
+    }
     WRITE_LOG("EXEC PID:%d PPID:%d COMM:%-16s FILE:%s ARGV:%s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->filename, argv, e->stack_id);
 }
 
 static void proc_event_exit(struct proc_event *e)
 {
-    if (!is_tracked_or_configured_process(e)) {
+    if (!track_proc_exit(e)) {
         return;
     }
 
     WRITE_LOG("EXIT PID:%d PPID:%d COMM:%-16s STACK_ID:0x%x",
             e->pid, e->ppid, e->comm, e->stack_id);
-    track_proc_exit(e);
 }
 
 // ebpf interface
