@@ -51,7 +51,6 @@ SERVICES_TO_STOP = [
 SRC_BUILD_PATHS = [
     Path(__file__).resolve().parent / "tmp",
     Path(__file__).resolve().parent / "sysDetector-ebpf" / ".output",
-    Path(__file__).resolve().parent / "sysDetector-ebpf" / "proc",
     Path(__file__).resolve().parent / "sysDetector-server" / "target",
     Path(__file__).resolve().parent / "sysDetector-cli" / "target"
 ]

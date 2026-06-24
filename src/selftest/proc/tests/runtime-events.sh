@@ -7,7 +7,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
-PROC_BIN="$REPO_ROOT/src/sysDetector-ebpf/proc"
+PROC_BIN="$REPO_ROOT/src/sysDetector-ebpf/.output/proc/proc"
 SERVER_MANIFEST="$REPO_ROOT/src/sysDetector-server/Cargo.toml"
 CLI_MANIFEST="$REPO_ROOT/src/sysDetector-cli/Cargo.toml"
 FIXTURE="$REPO_ROOT/src/selftest/proc/fixtures/selftest.conf"

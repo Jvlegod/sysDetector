@@ -21,17 +21,18 @@ VMLINUX := $(firstword $(wildcard $(VMLINUX_DIR)/vmlinux.h) $(wildcard $(VMLINUX
 # Use our own libbpf API headers and Linux UAPI headers distributed with
 # libbpf to avoid dependency on system-wide headers, which could be missing or
 # outdated
-INCLUDES := -I$(OUTPUT) -I../../libbpf/include/uapi -I$(dir $(VMLINUX)) -I$(LIBBLAZESYM_INC)
+INCLUDES := -I$(OUTPUT) -I$(OUTPUT)/proc -I. -I../../libbpf/include/uapi -I$(dir $(VMLINUX)) -I$(LIBBLAZESYM_INC)
 CFLAGS := -g -Wall
 ALL_LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
 
 APPS = # NULL
+PROC_APP := $(OUTPUT)/proc/proc
 
 CARGO ?= $(shell which cargo)
 ifeq ($(strip $(CARGO)),)
 BZS_APPS :=
 else
-BZS_APPS := proc
+BZS_APPS := $(PROC_APP)
 APPS += $(BZS_APPS)
 # Required by libblazesym
 ALL_LDFLAGS += -lrt -ldl -lpthread -lm
@@ -75,9 +76,9 @@ all: $(APPS)
 .PHONY: clean
 clean:
 	$(call msg,CLEAN)
-	$(Q)rm -rf $(OUTPUT) $(APPS)
+	$(Q)rm -rf $(OUTPUT)
 
-$(OUTPUT) $(OUTPUT)/libbpf $(BPFTOOL_OUTPUT):
+$(OUTPUT) $(OUTPUT)/libbpf $(BPFTOOL_OUTPUT) $(OUTPUT)/proc:
 	$(call msg,MKDIR,$@)
 	$(Q)mkdir -p $@
 
@@ -108,7 +109,7 @@ $(OUTPUT)/vmlinux.h: $(VMLINUX) | $(OUTPUT)
 	$(Q)cp $(VMLINUX) $@
 
 # Build BPF code
-$(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(OUTPUT)/vmlinux.h | $(OUTPUT) $(BPFTOOL)
+$(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(wildcard ../*.h) $(OUTPUT)/vmlinux.h | $(OUTPUT) $(OUTPUT)/proc $(BPFTOOL)
 	$(call msg,BPF,$@)
 	$(Q)$(CLANG) -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH)		      \
 		     $(INCLUDES) $(CLANG_BPF_SYS_INCLUDES)		      \
@@ -116,11 +117,19 @@ $(OUTPUT)/%.bpf.o: %.bpf.c $(LIBBPF_OBJ) $(wildcard %.h) $(OUTPUT)/vmlinux.h | $
 	$(Q)$(BPFTOOL) gen object $@ $(patsubst %.bpf.o,%.tmp.bpf.o,$@)
 
 # Generate BPF skeletons
-$(OUTPUT)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT) $(BPFTOOL)
+$(OUTPUT)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT) $(OUTPUT)/proc $(BPFTOOL)
 	$(call msg,GEN-SKEL,$@)
 	$(Q)$(BPFTOOL) gen skeleton $< > $@
 
 # Build user-space code
+$(PROC_APP): $(OUTPUT)/proc/proc.o $(LIBBPF_OBJ) $(LIBBLAZESYM_OBJ) | $(OUTPUT) $(OUTPUT)/proc
+	$(call msg,BINARY,$@)
+	$(Q)$(CC) $(CFLAGS) $^ $(ALL_LDFLAGS) -lelf -lz -o $@
+
+$(OUTPUT)/proc/proc.o: proc/proc.c $(OUTPUT)/proc/proc.skel.h $(wildcard proc/*.h) $(wildcard *.h) | $(OUTPUT) $(OUTPUT)/proc
+	$(call msg,CC,$@)
+	$(Q)$(CC) $(CFLAGS) $(INCLUDES) -c proc/proc.c -o $@
+
 $(patsubst %,$(OUTPUT)/%.o,$(APPS)): $(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wildcard %.h) | $(OUTPUT)
 
 $(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wildcard %.h) | $(OUTPUT)
@@ -130,11 +139,6 @@ $(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wildcard %.h) | $(OUTPUT)
 $(patsubst %,$(OUTPUT)/%.o,$(BZS_APPS)): $(LIBBLAZESYM_OBJ)
 
 $(BZS_APPS): $(LIBBLAZESYM_OBJ)
-
-# Build application binary
-$(APPS): %: $(OUTPUT)/%.o $(LIBBPF_OBJ) | $(OUTPUT)
-	$(call msg,BINARY,$@)
-	$(Q)$(CC) $(CFLAGS) $^ $(ALL_LDFLAGS) -lelf -lz -o $@
 
 # delete failed targets
 .DELETE_ON_ERROR:

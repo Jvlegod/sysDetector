@@ -109,13 +109,13 @@ message("-- eBPF clang: ${SYSDETECTOR_BPF_CLANG}")
 add_custom_target(build_sysDetector_ebpf ALL
     COMMENT "Building sysDetector-ebpf using Makefile..."
     COMMAND $(MAKE) -C ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf CLANG=${SYSDETECTOR_BPF_CLANG}
-    BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/proc
+    BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/.output/proc/proc
     DEPENDS build_sysDetector_server build_sysDetector_cli
 )
 
 install(
     PROGRAMS
-        ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/proc
+        ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/.output/proc/proc
     PERMISSIONS
         OWNER_READ OWNER_WRITE OWNER_EXECUTE
         GROUP_READ GROUP_EXECUTE
