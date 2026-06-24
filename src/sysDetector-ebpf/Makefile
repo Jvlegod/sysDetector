@@ -121,9 +121,9 @@ $(OUTPUT)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT) $(BPFTOOL)
 	$(Q)$(BPFTOOL) gen skeleton $< > $@
 
 # Build user-space code
-$(patsubst %,$(OUTPUT)/%.o,$(APPS)): %.o: %.skel.h
+$(patsubst %,$(OUTPUT)/%.o,$(APPS)): $(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wildcard %.h) | $(OUTPUT)
 
-$(OUTPUT)/%.o: %.c $(wildcard %.h) | $(OUTPUT)
+$(OUTPUT)/%.o: %.c $(OUTPUT)/%.skel.h $(wildcard %.h) | $(OUTPUT)
 	$(call msg,CC,$@)
 	$(Q)$(CC) $(CFLAGS) $(INCLUDES) -c $(filter %.c,$^) -o $@
 
