@@ -5,7 +5,7 @@
 [![EN Doc](https://img.shields.io/badge/Document-English-blue)](./README-EN.md)
 [![CN Doc](https://img.shields.io/badge/文档-中文-red)](./docs/zh/README-ZH.md)
 
-> 📌 version：v0.1.0 | [CHANGELOG](CHANGELOG.md)
+> 📌 version：v0.1.2 | [CHANGELOG](CHANGELOG.md)
 
 Monitoring tools for linux systems.
 
