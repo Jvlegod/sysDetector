@@ -1,0 +1,24 @@
+{
+  "name": "sysdetector",
+  "version": "0.1.2",
+  "description": "eBPF based Linux system detector",
+  "license": "GPL-3.0-or-later",
+  "author": "Jvle",
+  "homepage": "https://github.com/jvle/sysDetector#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jvle/sysDetector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jvle/sysDetector/issues"
+  },
+  "files": [
+    "README.md",
+    "CHANGELOG.md",
+    "src/"
+  ],
+  "scripts": {
+    "pack:deb": "cmake -S src -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build && cpack --config build/CPackConfig.cmake",
+    "pack:npm": "npm pack"
+  }
+}

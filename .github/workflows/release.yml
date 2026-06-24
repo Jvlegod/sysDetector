@@ -1,0 +1,89 @@
+name: Release packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without v prefix"
+        required: true
+        default: "0.1.2"
+
+env:
+  RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize version
+        id: version
+        shell: bash
+        run: |
+          version="${RELEASE_VERSION#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate synchronized versions
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          npm_version="$(node -p "require('./package.json').version")"
+          cmake_version="$(grep -E '^project\(sysDetector VERSION ' src/CMakeLists.txt | sed -E 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+          cli_version="$(grep -E '^version = ' src/sysDetector-cli/Cargo.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')"
+          server_version="$(grep -E '^version = ' src/sysDetector-server/Cargo.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')"
+          test "$version" = "$npm_version"
+          test "$version" = "$cmake_version"
+          test "$version" = "$cli_version"
+          test "$version" = "$server_version"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake clang llvm libelf-dev zlib1g-dev pkg-config \
+            linux-tools-common linux-tools-generic
+
+      - name: Build DEB package
+        run: |
+          cmake -S src -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+          cpack --config build/CPackConfig.cmake
+          mkdir -p dist
+          mv ./*.deb dist/
+
+      - name: Build npm package
+        run: |
+          npm pack --pack-destination dist
+
+      - name: Ensure release refs exist
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          branch="release/${tag}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$tag" "$GITHUB_SHA"
+          git branch -f "$branch" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag" --force
+          git push origin "refs/heads/$branch" --force
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: sysDetector ${{ steps.version.outputs.tag }}
+          body_path: CHANGELOG.md
+          files: dist/*
+          make_latest: true

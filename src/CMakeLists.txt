@@ -16,7 +16,7 @@
 
 cmake_minimum_required(VERSION 3.14)
 
-project(sysDetector)
+project(sysDetector VERSION 0.1.2)
 set(CMAKE_C_STANDARD 11)
 
 # include
@@ -109,6 +109,7 @@ message("-- eBPF clang: ${SYSDETECTOR_BPF_CLANG}")
 add_custom_target(build_sysDetector_ebpf ALL
     COMMENT "Building sysDetector-ebpf using Makefile..."
     COMMAND $(MAKE) -C ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf CLANG=${SYSDETECTOR_BPF_CLANG}
+    BYPRODUCTS ${CMAKE_CURRENT_SOURCE_DIR}/sysDetector-ebpf/proc
     DEPENDS build_sysDetector_server build_sysDetector_cli
 )
 
@@ -133,3 +134,17 @@ install(
 # add sub dir
 # add_subdirectory(sysDetector-ebpf)
 add_subdirectory(misc)
+
+# Package
+set(CPACK_PACKAGE_NAME "sysdetector")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_CONTACT "Jvle")
+set(CPACK_PACKAGE_VENDOR "sysDetector")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "eBPF based Linux system detector")
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Jvle")
+set(CPACK_DEBIAN_PACKAGE_SECTION "admin")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+include(CPack)
