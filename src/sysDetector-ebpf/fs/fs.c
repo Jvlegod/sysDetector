@@ -49,6 +49,15 @@ static int config_count;
 static struct fs_event_record events[MAX_EVENTS];
 static int event_count;
 static int event_cursor;
+static int inotify_fd = -1;
+static int watch_config[MAX_CONFIGS];
+static int watch_count;
+
+static bool has_suffix(const char *s, const char *suffix) {
+    size_t s_len = strlen(s);
+    size_t suffix_len = strlen(suffix);
+    return s_len >= suffix_len && strcmp(s + s_len - suffix_len, suffix) == 0;
+}
 
 static void ensure_dirs(void) {
     mkdir(LOG_DIR_PATH, 0755);
@@ -130,7 +139,7 @@ static void load_configs(void) {
 
     struct dirent *entry;
     while ((entry = readdir(dir))) {
-        if (entry->d_name[0] == '.') continue;
+        if (entry->d_name[0] == '.' || !has_suffix(entry->d_name, ".conf")) continue;
         char path[512];
         snprintf(path, sizeof(path), "%s/%s", FS_CONFIG_DIR, entry->d_name);
         struct stat st;
@@ -219,23 +228,44 @@ static const char *mask_to_op(uint32_t mask) {
     return "event";
 }
 
-static void monitor_once(void) {
-    int fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-    if (fd < 0) return;
+static void ensure_inotify(void) {
+    if (inotify_fd >= 0) return;
+    inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (inotify_fd < 0) log_line("Failed to initialize inotify: %s", strerror(errno));
+}
 
-    int watch_config[MAX_CONFIGS];
-    int watch_count = 0;
+static void rebuild_watches(void) {
+    ensure_inotify();
+    if (inotify_fd < 0) return;
+
+    for (int i = 0; i < watch_count; i++) inotify_rm_watch(inotify_fd, watch_config[i] >> 16);
+    watch_count = 0;
+
     for (int i = 0; i < config_count; i++) {
         if (!configs[i].monitor_switch) continue;
-        int wd = inotify_add_watch(fd, configs[i].path,
+        int wd = inotify_add_watch(inotify_fd, configs[i].path,
             IN_CREATE | IN_CLOSE_WRITE | IN_MODIFY | IN_DELETE | IN_DELETE_SELF |
             IN_MOVED_FROM | IN_MOVED_TO | IN_MOVE_SELF | IN_ATTRIB);
-        if (wd >= 0 && watch_count < MAX_CONFIGS) watch_config[watch_count++] = (wd << 16) | i;
+        if (wd >= 0 && watch_count < MAX_CONFIGS) {
+            watch_config[watch_count++] = (wd << 16) | i;
+            log_line("Watching fs config ID:%d PATH:%s", configs[i].id, configs[i].path);
+        } else if (wd < 0) {
+            log_line("Failed to watch fs config ID:%d PATH:%s: %s", configs[i].id, configs[i].path, strerror(errno));
+        }
     }
+}
+
+static void monitor_once(void) {
+    if (inotify_fd < 0) return;
 
     char buf[EVENT_BUF_LEN];
-    ssize_t len = read(fd, buf, sizeof(buf));
-    if (len > 0) {
+    while (1) {
+        ssize_t len = read(inotify_fd, buf, sizeof(buf));
+        if (len <= 0) {
+            if (len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) log_line("Failed to read inotify events: %s", strerror(errno));
+            break;
+        }
+
         for (char *ptr = buf; ptr < buf + len;) {
             struct inotify_event *ev = (struct inotify_event *)ptr;
             for (int i = 0; i < watch_count; i++) {
@@ -250,7 +280,6 @@ static void monitor_once(void) {
             ptr += sizeof(struct inotify_event) + ev->len;
         }
     }
-    close(fd);
 }
 
 static void handle_command(char *cmd) {
@@ -265,6 +294,8 @@ static void handle_command(char *cmd) {
         if (!cfg) { send_response(1); return; }
         cfg->monitor_switch = true;
         write_config_file(cfg);
+        load_configs();
+        rebuild_watches();
         log_line("Started fs monitoring for config ID:%d", cfg->id);
         send_response(0);
     } else if (strcmp(parts[0], "stop") == 0 && count >= 2) {
@@ -272,6 +303,8 @@ static void handle_command(char *cmd) {
         if (!cfg) { send_response(1); return; }
         cfg->monitor_switch = false;
         write_config_file(cfg);
+        load_configs();
+        rebuild_watches();
         log_line("Stopped fs monitoring for config ID:%d", cfg->id);
         send_response(0);
     } else if (strcmp(parts[0], "list") == 0) {
@@ -287,6 +320,7 @@ static void handle_command(char *cmd) {
 int main(void) {
     ensure_dirs();
     load_configs();
+    rebuild_watches();
     log_line("Starting monitoring FS");
 
     struct mq_attr attr = {0, 10, MAX_MSG_SIZE, 0};
@@ -300,7 +334,6 @@ int main(void) {
         char msg[MAX_MSG_SIZE] = {0};
         ssize_t len = mq_receive(cmdq, msg, sizeof(msg), NULL);
         if (len > 0) handle_command(msg);
-        load_configs();
         monitor_once();
         usleep(200000);
     }
